@@ -342,7 +342,9 @@ ol.do li.current { color: var(--signal); font-weight: 700; }
   // ---------------------------------------------------------------- スクロール位置 → 手順と進み具合
   const state = { step: 0, p: 0, frame: 0, walk: 1, dragAz: 0, dragPol: 0, colors: Object.assign({}, DATA.roles) };
   // 確認用: URL の末尾を #at-手順番号-進み具合(%) にすると、スクロールせずにその場面を表示する(例 #at-7-80)
-  const pinned = /^#at-(\d+)-(\d+)$/.exec(location.hash);
+  // 確認・撮影用: #at-手順-進み具合% で場面を固定する。3 つ目の数字(歩行のコマ番号)を付けると、歩行のコマも固定する
+  const pinned = /^#at-(\d+)-(\d+)(?:-(\d+))?$/.exec(location.hash);
+  const pinnedFrame = pinned && pinned[3] !== undefined ? Number(pinned[3]) : null;
   function readScroll() {
     if (pinned) { state.step = Math.min(sections.length - 1, Number(pinned[1])); state.p = clamp(Number(pinned[2]) / 100); $("now").innerHTML = "<b>" + sections[state.step].dataset.label + "</b>"; return; }
     const height = window.innerHeight;
@@ -648,7 +650,9 @@ ol.do li.current { color: var(--signal); font-weight: 700; }
     const S = state.step;
     const target = S === HERO ? 1 : (S === PARTS ? 1 - smooth(state.p / 0.12) : (S === WALK ? smooth(state.p / 0.25) : 0));
     state.walk += (target - state.walk) * Math.min(1, dt * 8);
-    if (target > 0.5 && !reduceMotion) {
+    if (pinnedFrame !== null) {
+      state.frame = pinnedFrame % F;
+    } else if (target > 0.5 && !reduceMotion) {
       state.frame = (state.frame + (26 / 60) * F * dt) % F;
     } else if (isLegStep(S)) {  // 脚の手順: クランクを組立位置へ(スクロール位置で決まる)
       state.frame = legFrame(state.p);

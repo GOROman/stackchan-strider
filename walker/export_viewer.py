@@ -45,6 +45,31 @@ def _explode(name: str) -> list[float]:
     return [float(v) for v in table[name]]
 
 
+BODY_SETTLE = 0.08  # 胴体が次の姿勢へ倒れ込むのにかける長さ(歩行 1 周に対する割合)
+
+
+def smooth_body(body: np.ndarray) -> np.ndarray:
+    """胴体の姿勢(コマ × 12)を、支える足が切り替わる瞬間に一気に動かず、少し遅れて倒れ込むようにならす。
+
+    接地姿勢は静的なつり合いで求めているので、支える 3 本が入れ替わるコマで姿勢が飛ぶ。
+    表示では、前のコマの姿勢から一定の割合で近づける(1 次遅れ)。周期の継ぎ目が出ないよう 3 周まわして最後の 1 周を使う。
+    """
+    frames = len(body)
+    rate = 1.0 - math.exp(-1.0 / (BODY_SETTLE * frames))
+    out = body.copy()
+    state = body[-1].copy()
+    for _lap in range(3):
+        for index in range(frames):
+            state = state + rate * (body[index] - state)
+            out[index] = state
+    # ならした回転部分を、直交行列に戻す
+    for index in range(frames):
+        matrix = out[index].reshape(3, 4)
+        u, _s, vt = np.linalg.svd(matrix[:, :3])
+        matrix[:, :3] = u @ vt
+    return out
+
+
 def collect() -> dict:
     defs = d.part_defs()
     parts = {}
@@ -68,7 +93,7 @@ def collect() -> dict:
         else:
             entry["f"] = _b64(stack, np.float32)
         instances.append(entry)
-    body = np.array([gait.body_transform(pose, 0.0)[:3, :].reshape(-1) for pose in poses[:FRAMES]])
+    body = smooth_body(np.array([gait.body_transform(pose, 0.0)[:3, :].reshape(-1) for pose in poses[:FRAMES]]))
     level = d.translation(0, 0, -d.GROUND_Z)[:3, :].reshape(-1)
     feet = np.array([d.foot_contacts(theta)[:, :, :].mean(axis=1) for theta in thetas[:FRAMES]])  # (F, 4, 3)
     with open(OUT / "verify_gears.json", encoding="utf-8") as handle:

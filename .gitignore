@@ -1,0 +1,26 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 生成物(walker/*.py で作り直せる)。公開用は walker/publish_files.py が print/ と docs/ へ写す
+out/
+
+# PlatformIO のビルド結果
+firmware/.pio/
+# 書き込み用バイナリは GitHub の Releases に置く
+firmware/release/
+# 実機から吸い出した出荷時フラッシュの控え(個体の設定を含みうるので公開しない)
+firmware/backup/
+
+# 参考資料のうち、再配布の条件がはっきりしないもの(出所は refs/SOURCES.md)
+refs/official_docs/
+refs/firmware_src/
+refs/repos/
+refs/analysis/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

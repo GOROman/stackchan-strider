@@ -1,0 +1,659 @@
+<title>Stackchan Strider 組立ガイド</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* レイアウト: 3D の作業台を画面に固定し、その横(狭い画面では下)を説明カードが流れる。スクロール位置がそのまま組立の進み具合になる。 */
+:root {
+  --bench: #e9ecef;        /* 作業台(ページ地) */
+  --card: #f8f9fa;         /* 説明カード */
+  --ink: #1d232c;
+  --ink-soft: #5b6573;
+  --line: #cfd5dc;
+  --signal: #cf2e25;       /* 機体の赤(強調) */
+  --signal-ink: #ffffff;
+  --note: #fdecea;         /* 注意書きの地 */
+  --note-ink: #7a1d16;
+  --stage-top: #f4f6f8;
+  --stage-bottom: #dfe4e9;
+  --role-chassis: #2d3340;
+  --role-accent: #e53a2f;
+  --role-link: #d6d9dc;
+  --font-display: "Chakra Petch", "Noto Sans JP", system-ui, sans-serif;
+  --font-body: "Noto Sans JP", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bench: #12151a; --card: #1b2027; --ink: #e6e9ee; --ink-soft: #98a2b1; --line: #2e3540;
+    --signal: #ff6257; --signal-ink: #1f0705; --note: #33181a; --note-ink: #ffc9c4;
+    --stage-top: #1d222a; --stage-bottom: #12151a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bench: #12151a; --card: #1b2027; --ink: #e6e9ee; --ink-soft: #98a2b1; --line: #2e3540;
+  --signal: #ff6257; --signal-ink: #1f0705; --note: #33181a; --note-ink: #ffc9c4;
+  --stage-top: #1d222a; --stage-bottom: #12151a; color-scheme: dark;
+}
+[hidden] { display: none !important; }
+body {
+  background: var(--bench); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.75;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.guide { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr); gap: 0 28px; max-width: 1500px; margin-inline: auto; }
+.stage { position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; height: 100dvh; min-width: 0; padding-block: 12px; box-sizing: border-box; }
+.stage-frame { position: relative; height: 100%; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: linear-gradient(var(--stage-top), var(--stage-bottom)); }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.progress { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: transparent; }
+.progress i { display: block; height: 100%; width: 0; background: var(--signal); }
+.now { position: absolute; left: 14px; top: 12px; font: 600 12px var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); pointer-events: none; }
+.now b { color: var(--ink); font-weight: 700; }
+.drag-hint { position: absolute; right: 12px; bottom: 10px; font-size: 11px; color: var(--ink-soft); pointer-events: none; }
+.fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--note-ink); }
+
+.steps { min-width: 0; }
+.step { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; padding-block: 24px; box-sizing: border-box; }
+.card { width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.hero .card { background: none; border: 0; padding-inline: 0; }
+.eyebrow { margin: 0; font: 600 12px var(--font-display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal); }
+h1 { margin: 0; font: 700 clamp(34px, 5.2vw, 56px)/1.02 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; text-wrap: balance; }
+h1 b { color: var(--signal); font-weight: 700; }
+h2 { margin: 0; font: 700 21px/1.4 var(--font-body); text-wrap: balance; }
+p { margin: 0; }
+.lead { font-size: 16px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 4px 0 0; }
+.facts div { border-top: 1px solid var(--line); padding-top: 8px; }
+.facts dt { font-size: 12px; color: var(--ink-soft); }
+.facts dd { margin: 0; font: 500 19px var(--font-data); font-variant-numeric: tabular-nums; }
+.scroll-cue { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+.scroll-cue::before { content: ""; width: 18px; height: 28px; border: 2px solid var(--ink-soft); border-radius: 10px; background: radial-gradient(circle at 50% 28%, var(--ink-soft) 0 2.5px, transparent 3px); }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch-btn { display: flex; align-items: center; gap: 6px; padding: 4px 9px 4px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font: 12px var(--font-body); cursor: pointer; }
+.swatch-btn[aria-pressed="true"] { border-color: var(--signal); }
+.swatch-btn:focus-visible, a:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.swatch-btn i { display: flex; width: 30px; height: 18px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
+.swatch-btn i u { flex: 1; }
+ol.do { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
+.parts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.parts li { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; background: var(--bench); }
+.parts li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line); background: var(--dot, var(--role-link)); }
+.parts .chassis { --dot: var(--role-chassis); }
+.parts .accent { --dot: var(--role-accent); }
+.parts .link { --dot: var(--role-link); }
+.parts .sc { --dot: #8d9196; }
+.parts b { font: 500 12px var(--font-data); }
+.tip { background: var(--note); color: var(--note-ink); border-radius: 8px; padding: 9px 12px; font-size: 13.5px; }
+.tip strong { font-weight: 700; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--ink-soft); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.marks { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 13.5px; }
+.marks dt { font: 500 13px var(--font-data); }
+.marks dd { margin: 0; }
+pre { margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bench); font: 13px/1.6 var(--font-data); overflow-x: auto; }
+.small { font-size: 12.5px; color: var(--ink-soft); }
+a { color: var(--signal); }
+.step.long { min-height: 280vh; min-height: 280dvh; align-items: flex-start; }
+.step.long .card { position: sticky; top: 14vh; }
+ol.do li.current { color: var(--signal); font-weight: 700; }
+@media (max-width: 860px) {
+  .step.long { min-height: 170vh; min-height: 170svh; }
+  .step.long .card { position: static; }
+  .guide { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 46vh; height: 46svh; z-index: 2; background: var(--bench); padding-block: 8px; }
+  .step { min-height: 62vh; min-height: 62svh; align-items: flex-start; padding-block: 14px; }
+  .hero { min-height: 50vh; min-height: 50svh; }
+  .drag-hint { display: none; }
+}
+</style>
+
+<div class="guide">
+  <div class="stage" aria-label="組立の 3D アニメーション">
+    <div class="stage-frame">
+      <canvas id="view"></canvas>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="now" id="now"></div>
+      <div class="drag-hint">横にドラッグで回転</div>
+      <div class="fail" id="fail" hidden>3D 表示を開始できませんでした。WebGL が使えるブラウザで開いてください。手順の文章はそのまま読めます。</div>
+    </div>
+  </div>
+
+  <main class="steps">
+    <section class="step hero" id="top" data-label="完成">
+      <div class="card">
+        <p class="eyebrow">組立ガイド</p>
+        <h1>Stackchan <b>Strider</b></h1>
+        <p class="lead">スタックチャンの首振りサーボ1個で歩く、3D プリントの4脚ベース。ネジも接着剤も使わず、はめるだけで組み立てます。</p>
+        <dl class="facts">
+          <div><dt>印刷部品</dt><dd id="fact-parts">37 個</dd></div>
+          <div><dt>工具・ネジ</dt><dd>不要</dd></div>
+          <div><dt>印刷時間の目安</dt><dd>5 時間 10 分</dd></div>
+          <div><dt>フィラメント</dt><dd>123 g</dd></div>
+        </dl>
+        <div class="swatches" id="swatches" role="group" aria-label="表示する色"></div>
+        <p class="scroll-cue">下へスクロールすると、組み立てが始まります</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-parts" data-label="部品">
+      <div class="card">
+        <p class="eyebrow">準備</p>
+        <h2>部品を 3 色に分けて印刷する</h2>
+        <p>印刷データは 3 プレートです。全部サポートなしで、色ごとにフィラメントを替えて刷ります。</p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>プレート</th><th>個数</th><th>使用量</th><th>時間</th></tr></thead>
+            <tbody>
+              <tr><td>Frame(骨格)</td><td class="num">4</td><td class="num">35.7 g</td><td class="num">1:17</td></tr>
+              <tr><td>Accent(主役)</td><td class="num">13</td><td class="num">67.9 g</td><td class="num">2:46</td></tr>
+              <tr><td>Links(つなぎ)</td><td class="num">20</td><td class="num">19.2 g</td><td class="num">1:05</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>脚の部品には刻印があります。<strong>数字はリンクの番号、英字はつなぐ場所</strong>です。同じ英字どうしをつなげば組み上がります。</p>
+        <dl class="marks">
+          <dt>1</dt><dd>両端が C と D</dd>
+          <dt>2</dt><dd>両端が C と F</dd>
+          <dt>3</dt><dd>両端が B と F</dd>
+          <dt>4</dt><dd>両端が E と G</dd>
+          <dt>B D E</dt><dd>上の三角板の3つの穴</dd>
+          <dt>F G</dt><dd>下の三角板の2つの穴(刻印のない角が足先)</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="step" id="step-1" data-label="手順 1">
+      <div class="card">
+        <p class="eyebrow">手順 1 / 8</p>
+        <h2>デッキにピニオンと左の側板を付ける</h2>
+        <ol class="do">
+          <li>ピニオンの歯の側から伸びている長い筒を、側板の丸い穴に内側から通します。</li>
+          <li>デッキの左側の2本のほぞを、側板の角穴に「カチッ」と止まるまで押し込みます。</li>
+        </ol>
+        <ul class="parts"><li class="chassis">デッキ <b>×1</b></li><li class="accent">ピニオン <b>×1</b></li><li class="chassis">側板 <b>×1</b></li></ul>
+        <p class="tip">側板は左右とも同じ部品です。<strong>突起(スタッド)が外側</strong>を向くように付けます。</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-2" data-label="手順 2">
+      <div class="card">
+        <p class="eyebrow">手順 2 / 8</p>
+        <h2>右の側板とスリーブを付ける</h2>
+        <ol class="do">
+          <li>右の側板を、デッキの右側のほぞに押し込みます。</li>
+          <li>短いスリーブを、右の側板の丸い穴に外から差し込みます。</li>
+        </ol>
+        <ul class="parts"><li class="chassis">側板 <b>×1</b></li><li class="link">スリーブ <b>×1</b></li></ul>
+      </div>
+    </section>
+
+    <section class="step" id="step-3" data-label="手順 3">
+      <div class="card">
+        <p class="eyebrow">手順 3 / 8</p>
+        <h2>シャフトを通し、クランクを付ける</h2>
+        <ol class="do">
+          <li>六角シャフトを右から差し、スリーブとピニオンに通します。</li>
+          <li>シャフトの両端にクランクを差し込みます。</li>
+        </ol>
+        <ul class="parts"><li class="link">六角シャフト <b>×1</b></li><li class="accent">クランク <b>×2</b></li></ul>
+        <p class="tip"><strong>左右のクランクのピンは、必ず反対向き(180°)</strong>にします。同じ向きだと歩きません。</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-4" data-label="手順 4">
+      <div class="card">
+        <p class="eyebrow">手順 4 / 8</p>
+        <h2>ターンテーブル歯車とソケット枠を載せる</h2>
+        <ol class="do">
+          <li>歯車の歯を下に向け、中央の軸をデッキの丸いボスに落とし込みます。</li>
+          <li>ソケット枠の3つのツメを、歯車の円板の角穴に合わせて載せます。</li>
+        </ol>
+        <ul class="parts"><li class="accent">ターンテーブル歯車 <b>×1</b></li><li class="chassis">ソケット枠 <b>×1</b></li></ul>
+        <p class="tip">円板を手で回して、クランクが一緒に回れば歯車は噛み合っています。</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-5" data-label="手順 5">
+      <div class="card">
+        <p class="eyebrow">手順 5 / 8</p>
+        <h2>ヨークをかぶせる</h2>
+        <p>ヨークを上からかぶせ、側板の4本のツノに「カチッ」と止まるまで押し込みます。輪の内側の返しが、歯車の浮き上がりを押さえます。</p>
+        <ul class="parts"><li class="accent">ヨーク <b>×1</b></li></ul>
+        <p class="tip">左右に立っている丸いパッドが、あとでスタックチャンの頭を挟みます。</p>
+      </div>
+    </section>
+
+    <section class="step long" id="step-6" data-label="手順 6">
+      <div class="card">
+        <p class="eyebrow">手順 6 / 8</p>
+        <h2>右側の脚を2本組む</h2>
+        <p><strong>先に机の上で</strong>、リンク 4 に三角板を付けた組を4つ作っておきます。リンク 4 の E の突起に上の三角板の E を、G の突起に下の三角板の G を通し、それぞれ突起の溝に C クリップを横からはめます。</p>
+        <ol class="do" id="leg-steps-7">
+          <li>クランクを回して、ピンを<strong>後ろ</strong>へ水平に向けておきます。</li>
+          <li>後ろ脚のリンク 3 の B を側板の後ろの突起に、リンク 1 の C をクランクのピンに通します。</li>
+          <li>三角板の組を重ねます。上の三角板は B と D に、下の三角板は F に入ります。</li>
+          <li>B と D の突起の溝に、C クリップをはめます。</li>
+          <li>前脚のリンク 3 を側板の前の突起に、リンク 1 をピンに通します。</li>
+          <li>後ろ脚のリンク 2 を F とピンに通し、F に C クリップをはめます。</li>
+          <li>前脚の三角板の組を重ね、B と D に C クリップをはめます。</li>
+          <li>前脚のリンク 2 を F とピンに通し、F に C クリップをはめます。</li>
+          <li>最後に、ピンの先の溝に C クリップをはめます。</li>
+        </ol>
+        <ul class="parts"><li class="link">リンク 1〜4 <b>各×2</b></li><li class="accent">三角板 <b>上下各×2</b></li><li class="link">C クリップ <b>×11</b></li></ul>
+        <p class="small">いま組んでいる脚の<strong>刻印が光ります</strong>。同じ英字どうしをつなぎます。</p>
+        <p class="tip"><strong>突起も穴も丸いので、向き合わせは要りません。</strong>重ねて、クリップをはめるだけです。前脚は部品が1層ぶん外側に付き、下の三角板は<strong>裏返して</strong>足先の幅広い部分を内側に向けます。</p>
+      </div>
+    </section>
+
+    <section class="step long" id="step-7" data-label="手順 7">
+      <div class="card">
+        <p class="eyebrow">手順 7 / 8</p>
+        <h2>左側の脚を2本組む</h2>
+        <p>右側と同じ要領ですが、<strong>前後が入れ替わります</strong>。左側は前脚から組みます。</p>
+        <ol class="do" id="leg-steps-8">
+          <li>クランクを回して、左のピンを<strong>前</strong>へ水平に向けておきます。</li>
+          <li>前脚のリンク 3 の B を側板の前の突起に、リンク 1 の C をクランクのピンに通します。</li>
+          <li>三角板の組を重ねます(B・D・F)。</li>
+          <li>B と D の突起の溝に、C クリップをはめます。</li>
+          <li>後ろ脚のリンク 3 を側板の後ろの突起に、リンク 1 をピンに通します。</li>
+          <li>前脚のリンク 2 を F とピンに通し、F に C クリップをはめます。</li>
+          <li>後ろ脚の三角板の組を重ね、B と D に C クリップをはめます。</li>
+          <li>後ろ脚のリンク 2 を F とピンに通し、F に C クリップをはめます。</li>
+          <li>最後に、ピンの先の溝に C クリップをはめます。</li>
+        </ol>
+        <ul class="parts"><li class="link">リンク 1〜4 <b>各×2</b></li><li class="accent">三角板 <b>上下各×2</b></li><li class="link">C クリップ <b>×11</b></li></ul>
+        <p class="tip">左側では、<strong>後ろ脚</strong>が1層ぶん外側に付き、下の三角板を裏返すのも後ろ脚です。左のピンは、右のピンと反対向きに付いています。</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-8" data-label="手順 8">
+      <div class="card">
+        <p class="eyebrow">手順 8 / 8</p>
+        <h2>スタックチャンを載せる</h2>
+        <p>土台をソケット枠のくぼみにはめ、頭を左右のパッドの間に入れます。置くだけで固定は不要です。充電するときは、そのまま持ち上げて外します。</p>
+        <ul class="parts"><li class="sc">スタックチャン(M5Stack 製品版)<b>×1</b></li></ul>
+        <p class="tip">頭はパッドに挟まれて左右には回れませんが、上下にうなずくことはできます。</p>
+      </div>
+    </section>
+
+    <section class="step" id="step-walk" data-label="歩行">
+      <div class="card">
+        <p class="eyebrow">完成</p>
+        <h2>首を回すと、歩き出す</h2>
+        <p>首振り(ヨー)のサーボを連続回転させます。頭は回れないので、代わりに土台と歯車が回り、4本の脚が動きます。</p>
+        <ol class="do">
+          <li>ファームウェアを書き込みます(手順はリポジトリの <code>firmware/README.md</code>)。</li>
+          <li>画面に出る QR をスマホで読み、家の Wi-Fi を設定します。</li>
+          <li>つながると操作ページの QR が出ます。読むと、スマホのブラウザに操作ページが開きます。</li>
+          <li>「前進」「後退」を押している間だけ歩きます。離すと止まります。</li>
+        </ol>
+        <p class="small">操作ページの QR は、頭の上をさわって離すと、もう一度出せます。</p>
+        <p class="tip">平らな机の上で、<strong>速さは 6 割以下</strong>が目安です(シミュレーションで <span id="fact-speed">毎秒 約 3 cm</span>)。歩いている間は土台が回り続けるので、USB ケーブルは外します。</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="application/json" id="guide-data">/*__DATA__*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("guide-data").textContent);
+  const F = DATA.frames;
+  const $ = (id) => document.getElementById(id);
+  const bytes = (text) => { const raw = atob(text); const out = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out.buffer; };
+  const f32 = (text) => new Float32Array(bytes(text));
+  const u32 = (text) => new Uint32Array(bytes(text));
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  const smooth = (v) => { const t = clamp(v); return t * t * (3 - 2 * t); };
+  const easeOut = (v) => 1 - Math.pow(1 - clamp(v), 3);
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  $("fact-parts").textContent = DATA.bom.total + " 個";
+  if (DATA.walk) $("fact-speed").textContent = "毎秒 約 " + (DATA.walk.speed / 10).toFixed(0) + " cm";
+
+  // 手順の並び(ページ上の section と同じ順)。HERO と PARTS のあとが組立、最後が歩行
+  const sections = Array.from(document.querySelectorAll(".step"));
+  const HERO = 0, PARTS = 1, FIRST = 2, WALK = sections.length - 1;
+  // 手順ごとのカメラ: 方位・仰角(天頂から)・距離・注視点。座標は three.js(Y が上、機体の前は -Z)
+  const CAMERAS = [
+    { az: 2.55, pol: 1.27, r: 600, at: [0, 84, 0] },
+    { az: 2.45, pol: 1.12, r: 980, at: [0, 150, 0] },
+    { az: -2.45, pol: 0.98, r: 400, at: [-6, 66, 0] },
+    { az: 2.45, pol: 0.98, r: 400, at: [6, 66, 0] },
+    { az: 2.2, pol: 1.08, r: 440, at: [0, 62, 0] },
+    { az: 2.55, pol: 0.92, r: 450, at: [0, 84, 0] },
+    { az: 2.55, pol: 1.05, r: 500, at: [0, 96, 0] },
+    { az: 1.38, pol: 1.3, r: 400, at: [40, 44, 0] },
+    { az: -1.76, pol: 1.3, r: 400, at: [-40, 44, 0] },
+    { az: 2.55, pol: 1.2, r: 600, at: [0, 96, 0] },
+    { az: 2.55, pol: 1.27, r: 640, at: [0, 84, 0] },
+  ];
+
+  // ---------------------------------------------------------------- スクロール位置 → 手順と進み具合
+  const state = { step: 0, p: 0, frame: 0, walk: 1, dragAz: 0, dragPol: 0, colors: Object.assign({}, DATA.roles) };
+  // 確認用: URL の末尾を #at-手順番号-進み具合(%) にすると、スクロールせずにその場面を表示する(例 #at-7-80)
+  const pinned = /^#at-(\d+)-(\d+)$/.exec(location.hash);
+  function readScroll() {
+    if (pinned) { state.step = Math.min(sections.length - 1, Number(pinned[1])); state.p = clamp(Number(pinned[2]) / 100); $("now").innerHTML = "<b>" + sections[state.step].dataset.label + "</b>"; return; }
+    const height = window.innerHeight;
+    const narrow = window.matchMedia("(max-width: 860px)").matches;
+    const stageBottom = narrow ? document.querySelector(".stage").getBoundingClientRect().bottom : 0;
+    const focus = narrow ? stageBottom + (height - stageBottom) * 0.42 : height * 0.56;
+    let step = 0, p = 0;
+    sections.forEach((section, index) => {
+      const box = section.getBoundingClientRect();
+      if (box.top <= focus) { step = index; p = clamp((focus - box.top) / Math.max(1, box.height)); }
+    });
+    if (step !== state.step) { state.dragAz = 0; state.dragPol = 0; }
+    state.step = step; state.p = p;
+    $("bar").style.width = (((step + p) / sections.length) * 100).toFixed(1) + "%";
+    $("now").innerHTML = "<b>" + sections[step].dataset.label + "</b>";
+  }
+
+  // ---------------------------------------------------------------- 色の切り替え
+  const PRESETS = [
+    ["設計の色", DATA.roles.chassis, DATA.roles.accent, DATA.roles.link],
+    ["グレー・ブルー・ホワイト", "#cccccc", "#2a86ea", "#fcfcfc"],
+  ];
+  let paintAll = () => {};
+  PRESETS.forEach((preset, index) => {
+    const stripes = document.createElement("i");
+    preset.slice(1).forEach((hex) => { const u = document.createElement("u"); u.style.background = hex; stripes.appendChild(u); });
+    const button = document.createElement("button");
+    button.className = "swatch-btn"; button.id = "color-" + index; button.setAttribute("aria-pressed", String(index === 0));
+    button.appendChild(stripes); button.appendChild(document.createTextNode(preset[0]));
+    button.addEventListener("click", () => {
+      state.colors = { chassis: preset[1], accent: preset[2], link: preset[3] };
+      document.querySelectorAll(".swatch-btn").forEach((other) => other.setAttribute("aria-pressed", String(other === button)));
+      ["chassis", "accent", "link"].forEach((role) => document.documentElement.style.setProperty("--role-" + role, state.colors[role]));
+      paintAll();
+    });
+    $("swatches").appendChild(button);
+  });
+
+  // ---------------------------------------------------------------- 3D
+  window.addEventListener("scroll", readScroll, { passive: true });
+  window.addEventListener("resize", readScroll);
+  if (location.hash && document.getElementById(location.hash.slice(1))) document.getElementById(location.hash.slice(1)).scrollIntoView();
+  readScroll();
+  if (!window.THREE) { $("fail").hidden = false; return; }
+  const canvas = $("view");
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true }); } catch (error) { $("fail").hidden = false; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 10, 5000);
+
+  // 撮影用の照明環境(樹脂のハイライトはここの映り込みで出る)
+  (function () {
+    const studio = new THREE.Scene();
+    studio.add(new THREE.Mesh(new THREE.SphereGeometry(60, 32, 16), new THREE.MeshBasicMaterial({ color: 0x3a3e45, side: THREE.BackSide })));
+    const lamp = (x, y, z, w, h, power) => {
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(power, power, power * 0.97), side: THREE.DoubleSide }));
+      panel.position.set(x, y, z); panel.lookAt(0, 0, 0); studio.add(panel);
+    };
+    lamp(6, 44, 8, 44, 44, 2.8); lamp(42, 18, 26, 14, 26, 6.0); lamp(-40, 18, -30, 10, 34, 4.5);
+    const generator = new THREE.PMREMGenerator(renderer);
+    scene.environment = generator.fromScene(studio, 0.035).texture;
+    generator.dispose();
+  })();
+  const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+  sun.position.set(190, 380, 150);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.radius = 5;
+  Object.assign(sun.shadow.camera, { left: -260, right: 260, top: 260, bottom: -260, near: 50, far: 900 });
+  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+  rim.position.set(-220, 170, -260);
+  scene.add(rim);
+
+  const world = new THREE.Group();   // 機体座標(Z 上・Y 前)を three.js の Y 上へ
+  world.rotation.x = -Math.PI / 2;
+  scene.add(world);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.ShadowMaterial({ opacity: 0.3 }));
+  floor.receiveShadow = true;
+  world.add(floor);
+  const body = new THREE.Group();
+  body.matrixAutoUpdate = false;
+  world.add(body);
+
+  // 角は立てたまま曲面だけ滑らかにした形状
+  function smoothGeometry(part) {
+    const indexed = new THREE.BufferGeometry();
+    indexed.setAttribute("position", new THREE.BufferAttribute(f32(part.v), 3));
+    indexed.setIndex(new THREE.BufferAttribute(u32(part.i), 1));
+    const flat = indexed.toNonIndexed();
+    const pos = flat.attributes.position.array, faces = pos.length / 9;
+    const normalOf = new Float32Array(faces * 3), areaOf = new Float32Array(faces), keys = new Array(faces * 3), corners = new Map();
+    for (let f = 0; f < faces; f++) {
+      const o = f * 9;
+      const ax = pos[o + 3] - pos[o], ay = pos[o + 4] - pos[o + 1], az = pos[o + 5] - pos[o + 2];
+      const bx = pos[o + 6] - pos[o], by = pos[o + 7] - pos[o + 1], bz = pos[o + 8] - pos[o + 2];
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, length = Math.hypot(nx, ny, nz) || 1;
+      areaOf[f] = length; normalOf[f * 3] = nx / length; normalOf[f * 3 + 1] = ny / length; normalOf[f * 3 + 2] = nz / length;
+      for (let c = 0; c < 3; c++) {
+        const q = o + c * 3, key = Math.round(pos[q] * 200) + "_" + Math.round(pos[q + 1] * 200) + "_" + Math.round(pos[q + 2] * 200);
+        keys[f * 3 + c] = key;
+        const list = corners.get(key);
+        if (list) list.push(f); else corners.set(key, [f]);
+      }
+    }
+    const normals = new Float32Array(pos.length);
+    for (let f = 0; f < faces; f++) {
+      const fx = normalOf[f * 3], fy = normalOf[f * 3 + 1], fz = normalOf[f * 3 + 2];
+      for (let c = 0; c < 3; c++) {
+        let nx = 0, ny = 0, nz = 0;
+        const list = corners.get(keys[f * 3 + c]);
+        for (let i = 0; i < list.length; i++) {
+          const g = list[i], gx = normalOf[g * 3], gy = normalOf[g * 3 + 1], gz = normalOf[g * 3 + 2];
+          if (fx * gx + fy * gy + fz * gz > 0.76) { nx += gx * areaOf[g]; ny += gy * areaOf[g]; nz += gz * areaOf[g]; }
+        }
+        const length = Math.hypot(nx, ny, nz) || 1, q = f * 9 + c * 3;
+        normals[q] = nx / length; normals[q + 1] = ny / length; normals[q + 2] = nz / length;
+      }
+    }
+    flat.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    return flat;
+  }
+  const geometries = {};
+  Object.keys(DATA.parts).forEach((key) => { geometries[key] = smoothGeometry(DATA.parts[key]); });
+
+  const items = DATA.instances.map((inst) => {
+    const part = DATA.parts[inst.part];
+    const material = new THREE.MeshPhysicalMaterial({ roughness: part.printable ? 0.36 : 0.5, metalness: 0, clearcoat: part.printable ? 0.4 : 0, clearcoatRoughness: 0.24, envMapIntensity: part.printable ? 0.42 : 0.36, side: THREE.DoubleSide });
+    if (part.finish === "glass") { material.roughness = 0.05; material.clearcoat = 1; material.clearcoatRoughness = 0.03; material.envMapIntensity = 1.1; }
+    const mesh = new THREE.Mesh(geometries[inst.part], material);
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = true;
+    body.add(mesh);
+    return { inst: inst, part: part, mesh: mesh, material: material, base: new THREE.Color(), frames: inst.f ? f32(inst.f) : null, fixed: inst.m || null, asm: inst.asm };
+  });
+  // 刻印: 溝を埋める形を部品ごとに用意しておき、その手順で付けるときだけ光らせる
+  // 刻印の光の色。明るい色の部品では黄緑が見えにくいので水色にする
+  const MARK_COLOR = 0xc8ff2e, MARK_COLOR_ON_LIGHT = 0x12b4ff;
+  items.forEach((item) => {
+    item.leg = /^(RR|RF|LR|LF)_/.test(item.inst.name) ? item.inst.name.slice(0, 2) : null;
+    item.t = -1;
+    item.marks = (item.part.marks || []).map((mark) => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(f32(mark.v), 3));
+      geometry.setIndex(new THREE.BufferAttribute(u32(mark.i), 1));
+      const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: MARK_COLOR, toneMapped: false }));
+      mesh.matrixAutoUpdate = false;
+      mesh.visible = false;
+      body.add(mesh);
+      return { mark: mark, mesh: mesh };
+    });
+  });
+  // 脚の手順(右側・左側)。クランクを組立位置へ回してから、検証済みの順に部品を差す
+  const LEG = DATA.legPlan;
+  const isLegStep = (step) => LEG.steps.indexOf(step) >= 0;
+  const legLists = {};
+  LEG.steps.forEach((step) => { legLists[step] = Array.from(document.querySelectorAll("#leg-steps-" + step + " li")); });
+  // 脚の手順でのクランクの向き(コマ番号)。手順のはじめに組立位置(F/2)へ回し、あとはそのまま
+  function legFrame(p) {
+    return smooth((p - LEG.turn[0]) / (LEG.turn[1] - LEG.turn[0])) * F / 2;
+  }
+
+  paintAll = function () {
+    items.forEach((item) => {
+      item.base.set(item.part.role ? state.colors[item.part.role] : item.part.color).convertSRGBToLinear();
+      item.material.color.copy(item.base);
+      const light = 0.2126 * item.base.r + 0.7152 * item.base.g + 0.0722 * item.base.b > 0.45;
+      item.marks.forEach((m) => m.mesh.material.color.setHex(light ? MARK_COLOR_ON_LIGHT : MARK_COLOR));
+    });
+  };
+  paintAll();
+  const bodyFrames = f32(DATA.body);
+
+  // ---------------------------------------------------------------- 1コマの姿勢
+  const scratch = new Float32Array(12), blended = new Float32Array(12);
+  function sample(array, frame, out) {
+    const a = Math.floor(frame) % F, b = (a + 1) % F, t = frame - Math.floor(frame);
+    for (let k = 0; k < 12; k++) out[k] = array[a * 12 + k] * (1 - t) + array[b * 12 + k] * t;
+    return out;
+  }
+  function setMatrix(matrix, m, dx, dy, dz) {
+    matrix.set(m[0], m[1], m[2], m[3] + dx, m[4], m[5], m[6], m[7] + dy, m[8], m[9], m[10], m[11] + dz, 0, 0, 0, 1);
+  }
+  function pose() {
+    const S = state.step, p = state.p;
+    const explode = S === PARTS ? smooth(p / 0.4) : (S === FIRST ? 1 : 0);
+    const frame = ((state.frame % F) + F) % F;
+    const legStep = isLegStep(S);
+    items.forEach((item) => {
+      const asm = item.asm, ex = item.inst.ex;
+      let alpha = 1, dx = 0, dy = 0, dz = 0, glow = 0;
+      item.t = S > PARTS && (S >= WALK || asm.step < S) ? 99 : -1;  // 99 = 取り付け済み、-1 = まだ無い
+      if (S <= PARTS) { dx = ex[0] * explode; dy = ex[1] * explode; dz = ex[2] * explode; }
+      else if (S < WALK && asm.step === S) {  // この手順で付ける部品: 離れた位置から飛んできてはまる
+        const t = (p - asm.start) / asm.span, away = 1 - easeOut(t);
+        item.t = t;
+        dx = asm.origin[0] * away; dy = asm.origin[1] * away; dz = asm.origin[2] * away;
+        alpha = clamp(t * 4);
+        glow = clamp(t * 4) * (1 - smooth((p - asm.start - asm.span * 1.15) / (legStep ? 0.05 : 0.22)));
+      } else if (S < WALK && asm.step > S) {  // まだ付けていない部品
+        if (S === FIRST) { alpha = 1 - clamp(p / 0.1); dx = ex[0]; dy = ex[1]; dz = ex[2]; } else alpha = 0;
+      }
+      item.mesh.visible = alpha > 0.01;
+      if (!item.mesh.visible) return;
+      const m = item.frames ? sample(item.frames, frame, scratch) : item.fixed;
+      setMatrix(item.mesh.matrix, m, dx, dy, dz);
+      const material = item.material, see = alpha < 0.999;
+      if (material.transparent !== see) { material.transparent = see; material.depthWrite = !see; material.needsUpdate = true; }
+      material.opacity = alpha;
+      item.mesh.castShadow = alpha > 0.6;
+      if (item.part.finish === "glow") { material.emissive.copy(item.base); material.emissiveIntensity = 1.4; }
+      else { material.emissive.copy(item.base).multiplyScalar(0.03 + 0.5 * glow); material.emissiveIntensity = 1; }
+    });
+    // 刻印: 脚の手順では、いま組んでいる脚の、すでに見えている部品の刻印をすべて光らせる。
+    // それ以外の手順では、いま入ってきている部品の番号と、同じ記号の相手を光らせる
+    const lit = {};
+    let leg = null;
+    const windowOf = () => 1.6;
+    if (legStep) {
+      let current = -1;
+      LEG.ops.forEach((op, index) => { if (p >= op[0]) current = index; });
+      items.forEach((item) => { if (item.leg && item.asm.step === S && item.asm.op === current) leg = item.leg; });
+    } else {
+      items.forEach((item) => {
+        if (!item.marks.length || !(item.t > 0 && item.t < windowOf(item))) return;
+        item.marks.forEach((m) => { if (m.mark.kind === "joint") lit[item.leg + m.mark.char] = true; });
+      });
+    }
+    items.forEach((item) => {
+      const arriving = item.t > 0 && item.t < windowOf(item);
+      item.marks.forEach((m) => {
+        const on = item.mesh.visible && item.t > 0 && (legStep ? item.leg === leg && leg !== null : (m.mark.kind === "number" ? arriving : !!lit[item.leg + m.mark.char]));
+        m.mesh.visible = on;
+        if (on) m.mesh.matrix.copy(item.mesh.matrix);
+      });
+    });
+    // 説明の箇条書きのうち、いまの操作に当たる行を強調する
+    LEG.steps.forEach((step) => {
+      let line = -1;
+      if (step === S) {
+        if (p >= LEG.turn[0]) line = 0;
+        LEG.ops.forEach((op, index) => { if (p >= op[0]) line = LEG.list[index]; });
+        if (p > LEG.ops[LEG.ops.length - 1][0] + 0.08) line = -1;
+      }
+      legLists[step].forEach((li, index) => li.classList.toggle("current", index === line));
+    });
+    // 機体: 歩いているときは接地姿勢(揺れ)、組立中は水平。分解中は部品が床に潜らないよう持ち上げる
+    const swaying = sample(bodyFrames, frame, scratch), w = state.walk;
+    for (let k = 0; k < 12; k++) blended[k] = DATA.level[k] * (1 - w) + swaying[k] * w;
+    setMatrix(body.matrix, blended, 0, 0, 70 * (S === FIRST ? 1 - smooth(state.p / 0.15) : explode));
+    body.matrixWorldNeedsUpdate = true;
+  }
+
+  // ---------------------------------------------------------------- カメラ
+  function cameraFor() {
+    const S = state.step, to = CAMERAS[Math.min(S, CAMERAS.length - 1)], from = CAMERAS[Math.max(0, Math.min(S, CAMERAS.length - 1) - 1)];
+    const k = S === 0 ? 1 : smooth(state.p / (isLegStep(S) ? 0.035 : 0.28));  // 脚の手順はスクロールが長いので、先にカメラを寄せる
+    let turn = to.az - from.az;
+    while (turn > Math.PI) turn -= 2 * Math.PI;
+    while (turn < -Math.PI) turn += 2 * Math.PI;
+    return { az: from.az + turn * k, pol: from.pol + (to.pol - from.pol) * k, r: from.r + (to.r - from.r) * k,
+      at: [0, 1, 2].map((i) => from.at[i] + (to.at[i] - from.at[i]) * k) };
+  }
+  let portrait = false;
+  function placeCamera() {
+    const cam = cameraFor();
+    const az = cam.az + state.dragAz, pol = Math.min(1.5, Math.max(0.2, cam.pol + state.dragPol)), r = cam.r * (portrait ? 1.22 : 1), s = Math.sin(pol);
+    camera.position.set(cam.at[0] + r * s * Math.sin(az), cam.at[1] + r * Math.cos(pol), cam.at[2] + r * s * Math.cos(az));
+    camera.lookAt(cam.at[0], cam.at[1], cam.at[2]);
+  }
+  let drag = null;
+  canvas.addEventListener("pointerdown", (event) => { drag = { x: event.clientX, y: event.clientY, id: event.pointerId }; });
+  window.addEventListener("pointerup", () => { drag = null; });
+  window.addEventListener("pointercancel", () => { drag = null; });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    state.dragAz -= (event.clientX - drag.x) * 0.008;
+    if (event.pointerType === "mouse") state.dragPol -= (event.clientY - drag.y) * 0.006;
+    drag.x = event.clientX; drag.y = event.clientY;
+  });
+  function resize() {
+    const box = canvas.parentElement.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    renderer.setSize(box.width, box.height, false);
+    portrait = box.width < box.height * 0.9;
+    camera.aspect = box.width / box.height;
+    camera.fov = portrait ? 38 : 30;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas.parentElement);
+  resize();
+
+  let previous = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.1, (now - previous) / 1000);
+    previous = now;
+    const S = state.step;
+    const target = S === HERO ? 1 : (S === PARTS ? 1 - smooth(state.p / 0.12) : (S === WALK ? smooth(state.p / 0.25) : 0));
+    state.walk += (target - state.walk) * Math.min(1, dt * 8);
+    if (target > 0.5 && !reduceMotion) {
+      state.frame = (state.frame + (26 / 60) * F * dt) % F;
+    } else if (isLegStep(S)) {  // 脚の手順: クランクを組立位置へ(スクロール位置で決まる)
+      state.frame = legFrame(state.p);
+    } else if (state.frame > 0.01) {  // 組立の姿勢(クランク 0°)まで回して止める
+      state.frame += (F - state.frame) * Math.min(1, dt * 6);
+      if (F - state.frame < 0.05) state.frame = 0;
+    }
+    pose();
+    placeCamera();
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>

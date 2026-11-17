@@ -1,0 +1,748 @@
+<title>Stackchan Strider</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* レイアウト: 作業台の上の実機を主役にした1画面。左に3Dステージ、右に計器盤(操作・検証・部品)。狭い幅では縦積み。 */
+:root {
+  --bench: #e9ecef;        /* 作業台(ページ地) */
+  --panel: #f7f8f9;        /* 計器盤 */
+  --ink: #1d232c;          /* 文字 */
+  --ink-soft: #5b6573;     /* 補助文字 */
+  --line: #cfd5dc;         /* 罫線 */
+  --chassis: #2d3340;      /* 機体のチャコール */
+  --signal: #cf2e25;       /* 機体の赤(強調) */
+  --signal-ink: #ffffff;
+  --gear: #c79200;         /* 歯車の黄 */
+  --ok: #1f8a55;
+  --ng: #c5372c;
+  --stage-top: #f4f6f8;
+  --stage-bottom: #dfe4e9;
+  --grid: #b9c1cb;
+  --font-display: "Chakra Petch", "Noto Sans JP", system-ui, sans-serif;
+  --font-body: "Noto Sans JP", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bench: #12151a; --panel: #1a1e25; --ink: #e6e9ee; --ink-soft: #98a2b1; --line: #2e3540;
+    --chassis: #aab3c2; --signal: #ff6257; --signal-ink: #1f0705; --gear: #f2c230; --ok: #4cc38a; --ng: #ff7a6b;
+    --stage-top: #1d222a; --stage-bottom: #12151a; --grid: #3a4250; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bench: #12151a; --panel: #1a1e25; --ink: #e6e9ee; --ink-soft: #98a2b1; --line: #2e3540;
+  --chassis: #aab3c2; --signal: #ff6257; --signal-ink: #1f0705; --gear: #f2c230; --ok: #4cc38a; --ng: #ff7a6b;
+  --stage-top: #1d222a; --stage-bottom: #12151a; --grid: #3a4250; color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--bench); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px; box-sizing: border-box;
+}
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 12px; min-height: 0; }
+.stage { position: relative; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  background: linear-gradient(var(--stage-top), var(--stage-bottom)); }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.stage canvas:active { cursor: grabbing; }
+.brand { position: absolute; left: 14px; top: 12px; pointer-events: none; }
+.brand h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.04em; line-height: 1.1; text-transform: uppercase; }
+.brand h1 b { color: var(--signal); font-weight: 700; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
+.readout { position: absolute; left: 14px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; font-family: var(--font-data);
+  font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; pointer-events: none; }
+.readout b { color: var(--ink); font-weight: 500; }
+.hint { position: absolute; right: 12px; bottom: 12px; font-size: 11px; color: var(--ink-soft); pointer-events: none; }
+.fail { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ng); }
+
+.panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; padding: 10px 6px; border: 0; background: none; color: var(--ink-soft); font: 500 13px var(--font-body); cursor: pointer; border-bottom: 2px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--signal); }
+.tabs button:focus-visible, .btn:focus-visible, .row-btn:focus-visible, input:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.pane { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+h2 { margin: 0; font: 600 12px var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.transport { display: flex; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--bench); color: var(--ink); border-radius: 6px; padding: 8px 12px; font: 500 13px var(--font-body); cursor: pointer; }
+.btn.primary { background: var(--signal); border-color: var(--signal); color: var(--signal-ink); flex: 1; font-weight: 700; }
+.btn[aria-pressed="true"] { border-color: var(--signal); color: var(--signal); }
+.slider { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 5em; align-items: center; gap: 8px; font-size: 13px; }
+.slider output { font-family: var(--font-data); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--signal); }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.segment { display: flex; gap: 6px; }
+.segment .btn { flex: 1; }
+.segment .btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.checks input { accent-color: var(--signal); }
+.note { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.note strong { color: var(--ink); font-weight: 500; }
+.spec { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 12.5px; }
+.spec dt { color: var(--ink-soft); }
+.spec dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
+.verdict { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bench); }
+.verdict strong { font: 700 15px var(--font-display); letter-spacing: 0.04em; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font: 500 11px var(--font-data); color: #fff; background: var(--ok); white-space: nowrap; }
+.pill.ng { background: var(--ng); }
+.check { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.check:first-of-type { border-top: 0; }
+.check .what { font-weight: 500; }
+.check .how { grid-column: 2; color: var(--ink-soft); font-size: 12px; overflow-wrap: anywhere; }
+.check .how code { font-family: var(--font-data); font-size: 11.5px; color: var(--ink); }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { text-align: left; font-weight: 500; color: var(--ink-soft); padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 0; border-bottom: 1px solid var(--line); }
+td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; padding: 4px 6px; white-space: nowrap; }
+.row-btn { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 6px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.row-btn[aria-pressed="true"] { color: var(--signal); font-weight: 700; }
+.swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.colors { display: flex; flex-direction: column; gap: 6px; }
+.color { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; cursor: pointer; }
+.color input[type="color"] { width: 34px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.color span { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.color b { font-weight: 500; font-size: 13px; }
+.color small { font-size: 11px; color: var(--ink-soft); }
+.color code { font-family: var(--font-data); font-size: 12px; color: var(--ink-soft); }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--bench); color: var(--ink); font: 12px var(--font-body); cursor: pointer; }
+.preset:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.preset[aria-pressed="true"] { border-color: var(--signal); }
+.preset i { display: flex; width: 30px; height: 18px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
+.preset i u { flex: 1; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(260px, 52%) minmax(0, 1fr); }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="app">
+  <section class="stage" aria-label="3D プレビュー">
+    <canvas id="view"></canvas>
+    <div class="brand">
+      <h1>Stackchan <b>Strider</b></h1>
+      <p>首振りサーボ1個で歩く、ヤンセン機構の4脚ベース</p>
+    </div>
+    <div class="readout" id="readout"></div>
+    <div class="hint">ドラッグ: 回転 / ホイール・ピンチ: 拡大 / 右ドラッグ: 移動</div>
+    <div class="fail" id="fail" hidden>3D 表示を開始できませんでした。WebGL が使えるブラウザで開いてください。</div>
+  </section>
+
+  <aside class="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-drive" aria-selected="true" aria-controls="pane-drive">操作</button>
+      <button role="tab" id="tab-verify" aria-selected="false" aria-controls="pane-verify">検証</button>
+      <button role="tab" id="tab-parts" aria-selected="false" aria-controls="pane-parts">部品</button>
+    </div>
+
+    <div class="pane" id="pane-drive" role="tabpanel" aria-labelledby="tab-drive">
+      <div class="group">
+        <h2>歩行</h2>
+        <div class="transport">
+          <button class="btn primary" id="play">停止</button>
+          <button class="btn" id="reverse" aria-pressed="false">後退</button>
+        </div>
+        <label class="slider" for="rpm"><span>回転数</span><input type="range" id="rpm" min="2" max="80" step="1" value="24"><output id="rpm-out"></output></label>
+        <label class="slider" for="crank"><span>クランク角</span><input type="range" id="crank" min="0" max="359" step="1" value="0"><output id="crank-out"></output></label>
+      </div>
+      <div class="group">
+        <h2>表示</h2>
+        <div class="segment" role="group" aria-label="見た目">
+          <button class="btn" id="look-plain" aria-pressed="true">図面風</button>
+          <button class="btn" id="look-real" aria-pressed="false">実写風</button>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="show-sc" checked>スタックチャン</label>
+          <label><input type="checkbox" id="show-legs" checked>脚</label>
+          <label><input type="checkbox" id="show-sway" checked>接地姿勢の揺れ</label>
+          <label><input type="checkbox" id="show-path" checked>足先の軌跡</label>
+        </div>
+        <label class="slider" for="explode"><span>分解</span><input type="range" id="explode" min="0" max="100" step="1" value="0"><output id="explode-out"></output></label>
+      </div>
+      <div class="group">
+        <h2>色</h2>
+        <div class="colors">
+          <label class="color" for="color-chassis"><input type="color" id="color-chassis"><span><b>骨格</b><small>側板・デッキ・ソケット枠</small></span><code id="color-chassis-out"></code></label>
+          <label class="color" for="color-accent"><input type="color" id="color-accent"><span><b>主役</b><small>ヨーク・三角板・歯車・クランク</small></span><code id="color-accent-out"></code></label>
+          <label class="color" for="color-link"><input type="color" id="color-link"><span><b>つなぎ</b><small>リンク・シャフト・スリーブ</small></span><code id="color-link-out"></code></label>
+        </div>
+        <div class="presets" id="presets" role="group" aria-label="配色の例"></div>
+        <div class="transport">
+          <button class="btn" id="color-copy">色コードをコピー</button>
+          <button class="btn" id="color-reset">元に戻す</button>
+        </div>
+        <p class="note" id="color-note">選んだ色はこのブラウザに残ります。設計ファイルは変わりません。</p>
+      </div>
+      <div class="group">
+        <h2>しくみ</h2>
+        <p class="note">スタックチャンの<strong>土台</strong>を枠にはめ、<strong>頭</strong>を左右のイヤーパッドで挟みます。首振りサーボを連続回転させると、頭は回れないので土台とターンテーブル歯車が回り、45° の傘歯車で横向きのクランク軸に伝わって4本の脚が動きます。頭は上下にはうなずけます。</p>
+        <dl class="spec" id="spec"></dl>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-verify" role="tabpanel" aria-labelledby="tab-verify" hidden></div>
+    <div class="pane" id="pane-parts" role="tabpanel" aria-labelledby="tab-parts" hidden></div>
+  </aside>
+</div>
+
+<script type="application/json" id="walker-data">/*__DATA__*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("walker-data").textContent);
+  const F = DATA.frames;
+  const $ = (id) => document.getElementById(id);
+  const bytes = (text) => { const raw = atob(text); const out = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out.buffer; };
+  const f32 = (text) => new Float32Array(bytes(text));
+  const u32 = (text) => new Uint32Array(bytes(text));
+  const fmt = (value, digits) => Number(value).toFixed(digits === undefined ? 1 : digits);
+  const el = (tag, attrs, children) => {
+    const node = document.createElement(tag);
+    for (const key in (attrs || {})) { if (key === "text") node.textContent = attrs[key]; else node.setAttribute(key, attrs[key]); }
+    (children || []).forEach((child) => node.appendChild(typeof child === "string" ? document.createTextNode(child) : child));
+    return node;
+  };
+
+  // ---------------------------------------------------------------- 状態
+  const state = {
+    playing: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    direction: 1, rpm: 24, frame: 0, lap: 0, explode: 0, sway: true, highlight: null, real: false,
+  };
+
+  // ---------------------------------------------------------------- 計器盤(検証・部品・諸元)
+  function pill(ok) { return el("span", { class: ok ? "pill" : "pill ng", text: ok ? "合格" : "不合格" }); }
+  function check(ok, what, how) {
+    const howNode = el("div", { class: "how" });
+    howNode.innerHTML = how;
+    return el("div", { class: "check" }, [pill(ok), el("div", { class: "what", text: what }), howNode]);
+  }
+  function buildVerify() {
+    const pane = $("pane-verify"), w = DATA.walk, g = DATA.gears, gait = w.gait;
+    const sim = DATA.sim;
+    const all = w.ok && g.ok && DATA.bom.ok && (!sim || sim.falls === 0);
+    pane.appendChild(el("div", { class: "verdict" }, [pill(all), el("strong", { text: all ? "全検証に合格" : "不合格の項目あり" })]));
+    if (sim) {
+      const phys = el("div", { class: "group" }, [el("h2", { text: "物理シミュレーション(MuJoCo)" })]);
+      const typical = sim.rows.filter((r) => r.friction === 0.5 && r.command === 0.6)[0];
+      phys.appendChild(check(sim.falls === 0, "床の摩擦 0.3〜1.0 × 速度3段階 × 前進・後退で歩ける",
+        "<code>" + sim.cases + " 条件</code>中、転倒 <code>" + sim.falls + "</code>。前後の傾き最大 <code>" + fmt(sim.worst_pitch_deg) + "°</code>"));
+      if (typical) phys.appendChild(check(!typical.fallen, "標準条件(摩擦 0.5、クランク約 " + fmt(typical.crank_rpm, 0) + " rpm)",
+        "速度 <code>" + fmt(typical.speed_mm_s) + " mm/s</code>、<code>" + fmt(typical.advance_per_rev_mm) + " mm/回転</code>、サーボ平均 <code>" + fmt(typical.servo_torque_mNm_mean) + " mN·m</code>"));
+      sim.sensitivity.forEach((row) => phys.appendChild(check(row.falls === 0, "条件を悪くした場合: " + row.label,
+        row.cases + " 条件中、転倒 <code>" + row.falls + "</code>。前後の傾き最大 " + fmt(row.pitch) + "°、サーボ平均の最大 " + fmt(row.torque) + " mN·m")));
+      phys.appendChild(el("p", { class: "note", text: "閉リンクの4脚、歯車の拘束、サーボのトルク-速度特性、関節の摩擦を入れた剛体シミュレーションです。部品のたわみ、歯車のバックラッシュ、頭とイヤーパッドのすきまは入っていません。" }));
+      pane.appendChild(phys);
+    }
+    const gearGroup = el("div", { class: "group" }, [el("h2", { text: "歯車の噛み合い" })]);
+    g.specs.forEach((row) => gearGroup.appendChild(check(row.ok, row.item, row.value)));
+    g.cases.forEach((row) => gearGroup.appendChild(check(row.ok, row.case,
+      "干渉 <code>" + fmt(row.max_overlap_mm3, 4) + " mm³</code>、バックラッシュ <code>" + fmt(row.backlash_min_mm, 2) + "〜" + fmt(row.backlash_max_mm, 2) + " mm</code>(半ピッチ " + fmt(row.half_pitch_mm, 2) + " mm)")));
+    pane.appendChild(gearGroup);
+    const walk = el("div", { class: "group" }, [el("h2", { text: "歩行1周の干渉" })]);
+    walk.appendChild(check(w.self_test.ok, "干渉検出の自己診断", "部品をわざとずらして検出できることを確認"));
+    walk.appendChild(check(w.collisions.ok, "全部品の干渉(スタックチャン込み)", "クランク1回転を <code>" + w.collisions.poses + " 姿勢</code>で調べ、重なり <code>" + w.collisions.hits.length + " 件</code>"));
+    walk.appendChild(check(w.gaps.ok, "連結していない部品の最小すきま", "<code>" + fmt(w.gaps.min_gap_mm, 2) + " mm</code>(要求 " + w.gaps.required_mm + " mm)"));
+    const asm = DATA.assembly;
+    if (asm) walk.appendChild(check(asm.ops.every((op) => op.ok), "組立手順どおりに部品を差し込める", "左右の脚 <code>" + asm.ops.length + " 操作</code>(重ねる・クリップをはめる)を 1 つずつ動かし、重なり <code>" + asm.ops.filter((op) => !op.ok).length + " 件</code>"));
+    walk.appendChild(check(w.keys.ok, "抜け止め: すべての突起を C クリップで留める", "クリップの掛かり <code>" + fmt(w.keys.clip_overlap_mm, 1) + " mm</code>、穴と軸のすきま 片側 <code>" + fmt(w.keys.radial_fit_mm, 2) + " mm</code>、軸方向の遊びは最大 <code>" + fmt(w.keys.max_axial_play_mm, 1) + " mm</code>"));
+    walk.appendChild(check(w.head_lock.ok, "頭の回り止め", "ヨーの遊び <code>±" + fmt(w.head_lock.yaw_play_deg[0], 1) + "°</code>、うなずき <code>" + w.head_lock.nod_free_range_deg.join("〜") + "°</code> で干渉なし"));
+    walk.appendChild(check(w.table_retention.ok, "ターンテーブルの浮き上がり止め", "0.3 mm は自由、1.0 mm でカラーに当たる"));
+    pane.appendChild(walk);
+    const rest = el("div", { class: "group" }, [el("h2", { text: "接地姿勢とトルク" })]);
+    rest.appendChild(check(gait.ok, "転倒せずに歩ける", "傾き最大 <code>" + fmt(gait.tilt_max_deg) + "°</code>(前後 " + fmt(gait.pitch_deg[0]) + "〜+" + fmt(gait.pitch_deg[1]) + "°、左右 ±" + fmt(gait.roll_deg[1]) + "°)、静的転倒角 " + fmt(gait.static_tip_angle_deg, 0) + "°、支持脚は常に " + gait.min_support_feet + " 本以上"));
+    rest.appendChild(check(gait.torque_peak_Nm <= gait.servo_rated_Nm, "サーボのトルク", "持ち上げ分のピーク <code>" + fmt(gait.torque_peak_Nm * 1000) + " mN·m</code> / 定格 " + fmt(gait.servo_rated_Nm * 1000, 0) + " mN·m(摩擦は含まない)"));
+    rest.appendChild(el("p", { class: "note", text: "静的なつり合いの計算です。4脚では足が2本同時に浮く瞬間があり、機体は3本足で支えられて前後に小さく揺れながら歩きます。" }));
+    const assume = el("p", { class: "note" });
+    assume.textContent = "前提: " + gait.assumptions.join(" / ");
+    rest.appendChild(assume);
+    pane.appendChild(rest);
+  }
+  function buildParts() {
+    const pane = $("pane-parts"), bom = DATA.bom;
+    pane.appendChild(el("div", { class: "group" }, [
+      el("h2", { text: "印刷部品" }),
+      el("p", { class: "note", text: "印刷 " + bom.total_printed_parts + " 個(STL " + bom.unique_stl + " 種)、購入部品 " + bom.purchased_parts + " 個。ネジ・ベアリングなし。全部品サポートなしで造形できる向きで出力しています。行を押すとその部品だけ強調します。" }),
+    ]));
+    const table = el("table", {}, [el("thead", {}, [el("tr", {}, [el("th", { text: "部品" }), el("th", { text: "個数" }), el("th", { text: "造形寸法 mm" })])])]);
+    const body = el("tbody");
+    const partOf = (key) => key.indexOf("tri_lower") === 0 ? "tri_lower" : key;
+    bom.parts.forEach((row) => {
+      const button = el("button", { class: "row-btn", "aria-pressed": "false", "data-part": partOf(row.key) }, [
+        el("span", { class: "swatch", "data-role": DATA.parts[partOf(row.key)].role || "", style: "background:" + DATA.parts[partOf(row.key)].color }), row.label]);
+      button.addEventListener("click", () => {
+        const next = state.highlight === button.dataset.part ? null : button.dataset.part;
+        state.highlight = next;
+        body.querySelectorAll(".row-btn").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.part === next)));
+        applyHighlight();
+      });
+      body.appendChild(el("tr", {}, [el("td", {}, [button]), el("td", { class: "num", text: "×" + row.count }), el("td", { class: "num", text: row.size_mm.map((v) => fmt(v, 0)).join("×") })]));
+    });
+    table.appendChild(body);
+    pane.appendChild(el("div", { class: "tablewrap" }, [table]));
+  }
+  function buildSpec() {
+    const spec = $("spec"), dm = DATA.dims, env = DATA.bom.envelope_mm, gait = DATA.walk.gait;
+    [["全体(幅×長さ×高さ)", env.width + " × " + env.length + " × " + env.height + " mm"],
+     ["質量(スタックチャン込み)", fmt(gait.mass_total_g, 0) + " g"],
+     ["傘歯車", "m" + dm.module + " × " + dm.teeth + " 歯 1:1、45°"],
+     ["クランク半径", dm.crank_radius + " mm"],
+     ["歩く速さ(MuJoCo)", (function () { const t = DATA.sim && DATA.sim.rows.filter((r) => r.friction === 0.5 && r.command === 0.6)[0]; return t ? fmt(t.speed_mm_s, 0) + " mm/s @ " + fmt(t.crank_rpm, 0) + " rpm" : "未計算"; })()],
+     ["足上げ", fmt(gait.foot_lift_mm) + " mm"]].forEach((pair) => { spec.appendChild(el("dt", { text: pair[0] })); spec.appendChild(el("dd", { text: pair[1] })); });
+  }
+  buildVerify(); buildParts(); buildSpec();
+  ["drive", "verify", "parts"].forEach((name) => {
+    $("tab-" + name).addEventListener("click", () => {
+      ["drive", "verify", "parts"].forEach((other) => {
+        $("tab-" + other).setAttribute("aria-selected", String(other === name));
+        $("pane-" + other).hidden = other !== name;
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------- 3D
+  if (!window.THREE) { $("fail").hidden = false; return; }
+  const canvas = $("view");
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true }); } catch (error) { $("fail").hidden = false; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 5, 4000);
+  const cssColor = (name) => new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x8a8f99, 0.85);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(160, 320, 120);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 50, far: 700 });
+  scene.add(sun);
+
+  // 機体座標(Z 上・Y 前)を three.js の Y 上へ
+  const world = new THREE.Group();
+  world.rotation.x = -Math.PI / 2;
+  scene.add(world);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.ShadowMaterial({ opacity: 0.22 }));
+  floor.receiveShadow = true;
+  world.add(floor);
+  const GRID = 20, HALF = 300;
+  const gridPoints = [];
+  for (let v = -HALF; v <= HALF; v += GRID) { gridPoints.push(-HALF, v, 0, HALF, v, 0, v, -HALF, 0, v, HALF, 0); }
+  const gridGeometry = new THREE.BufferGeometry();
+  gridGeometry.setAttribute("position", new THREE.Float32BufferAttribute(gridPoints, 3));
+  const gridMaterial = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
+  const grid = new THREE.LineSegments(gridGeometry, gridMaterial);
+  grid.position.z = 0.05;
+  world.add(grid);
+
+  const body = new THREE.Group();
+  body.matrixAutoUpdate = false;
+  world.add(body);
+
+  const geometries = {};
+  Object.keys(DATA.parts).forEach((key) => {
+    const part = DATA.parts[key];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(f32(part.v), 3));
+    geometry.setIndex(new THREE.BufferAttribute(u32(part.i), 1));
+    geometries[key] = geometry;
+  });
+  // 3D プリントの積層の筋: 造形時の上方向に沿って、面の向きをごくわずかに波打たせる(実写風のときだけ効かせる)
+  function attachLayerLines(material, part) {
+    const up = part.up || [0, 0, 1];
+    material.userData.layerUp = { value: new THREE.Vector3(up[0], up[1], up[2]) };
+    material.userData.layerAmp = { value: 0 };
+    material.extensions = { derivatives: true };
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uLayerUp = material.userData.layerUp;
+      shader.uniforms.uLayerAmp = material.userData.layerAmp;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform vec3 uLayerUp;\nvarying float vLayerHeight;\nvarying vec3 vLayerUp;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLayerHeight = dot(position, uLayerUp);\nvLayerUp = normalMatrix * uLayerUp;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform float uLayerAmp;\nvarying float vLayerHeight;\nvarying vec3 vLayerUp;")
+        .replace("#include <normal_fragment_maps>", [
+          "#include <normal_fragment_maps>",
+          "if (uLayerAmp > 0.0) {",
+          "  float layerPhase = vLayerHeight / 0.45;",  // 見えるように実際(0.2 mm)より粗い 0.45 mm 間隔
+          "  float layerFade = 1.0 - smoothstep(0.3, 0.8, fwidth(layerPhase));",  // 画素より細かくなったら消してモアレを防ぐ
+          "  vec3 layerUp = normalize(vLayerUp);",
+          "  vec3 layerTangent = layerUp - normal * dot(layerUp, normal);",
+          "  normal = normalize(normal + layerTangent * (uLayerAmp * layerFade * cos(6.2831853 * layerPhase)));",
+          "}",
+        ].join("\n"));
+    };
+  }
+  const items = DATA.instances.map((inst) => {
+    const part = DATA.parts[inst.part];
+    const material = new THREE.MeshPhysicalMaterial({ color: part.color, flatShading: true, roughness: 0.62, metalness: 0.05, side: THREE.DoubleSide });
+    if (part.finish === "glass") { material.roughness = 0.12; material.metalness = 0.35; }
+    if (part.finish === "glow") { material.emissive = new THREE.Color(part.color); material.emissiveIntensity = 0.85; }
+    attachLayerLines(material, part);
+    const mesh = new THREE.Mesh(geometries[inst.part], material);
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = true;
+    body.add(mesh);
+    return { inst: inst, mesh: mesh, material: material, frames: inst.f ? f32(inst.f) : null, fixed: inst.m || null,
+      isLeg: /^(RR|RF|LR|LF)_/.test(inst.name), isStackchan: inst.part.indexOf("sc_") === 0 };
+  });
+  const bodyFrames = f32(DATA.body);
+  const feet = f32(DATA.feet);
+  const pathGroup = new THREE.Group();
+  body.add(pathGroup);
+  DATA.legs.forEach((leg, index) => {
+    const points = [];
+    for (let frame = 0; frame <= F; frame++) { const o = ((frame % F) * 4 + index) * 3; points.push(feet[o], feet[o + 1], feet[o + 2]); }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    pathGroup.add(new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x2aa0c8 })));
+  });
+
+  function applyTheme() { gridMaterial.color.copy(cssColor("--grid")); }
+  applyTheme();
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  function applyHighlight() {
+    items.forEach((item) => {
+      const dim = state.highlight && item.inst.part !== state.highlight;
+      item.material.transparent = !!dim;
+      item.material.opacity = dim ? 0.1 : 1;
+      item.material.depthWrite = !dim;
+      item.mesh.castShadow = !dim;
+      item.material.needsUpdate = true;
+    });
+  }
+
+  const scratch = new Float32Array(12);
+  function sample(array, frame, out) {
+    const a = Math.floor(frame) % F, b = (a + 1) % F, t = frame - Math.floor(frame);
+    for (let k = 0; k < 12; k++) out[k] = array[a * 12 + k] * (1 - t) + array[b * 12 + k] * t;
+    return out;
+  }
+  function setMatrix(matrix, m, dx, dy, dz) {
+    matrix.set(m[0], m[1], m[2], m[3] + dx, m[4], m[5], m[6], m[7] + dy, m[8], m[9], m[10], m[11] + dz, 0, 0, 0, 1);
+  }
+  function pose() {
+    const frame = ((state.frame % F) + F) % F;
+    items.forEach((item) => {
+      const m = item.frames ? sample(item.frames, frame, scratch) : item.fixed;
+      const k = state.explode, ex = item.inst.ex;
+      setMatrix(item.mesh.matrix, m, ex[0] * k, ex[1] * k, ex[2] * k);
+    });
+    const exploded = state.explode > 0.001;
+    const b = state.sway && !exploded ? sample(bodyFrames, frame, scratch) : DATA.level;
+    setMatrix(body.matrix, b, 0, 0, exploded ? 70 * state.explode : 0);
+    body.matrixWorldNeedsUpdate = true;
+    const a = Math.floor(frame), t = frame - a;
+    const travel = state.lap * DATA.forward[F] + DATA.forward[a] * (1 - t) + DATA.forward[a + 1] * t;
+    grid.position.y = -(((travel % GRID) + GRID) % GRID);
+    const crankDeg = ((-frame / F * 360) % 360 + 360) % 360;
+    const pitch = DATA.pitch[a], roll = DATA.roll[a];
+    $("readout").innerHTML = "クランク <b>" + fmt(crankDeg, 0) + "°</b> ターンテーブル <b>" + fmt((360 - crankDeg) % 360, 0) + "°</b> 前後 <b>" + (pitch >= 0 ? "+" : "") + fmt(pitch) + "°</b> 左右 <b>" + (roll >= 0 ? "+" : "") + fmt(roll) + "°</b> 接地 <b>" + DATA.support[a].map((i) => DATA.legs[i]).join(" ") + "</b>";
+    $("crank").value = String(Math.round(crankDeg) % 360);
+    $("crank-out").textContent = fmt(crankDeg, 0) + "°";
+  }
+
+  // ---------------------------------------------------------------- カメラ操作
+  const orbit = { azimuth: 2.5, polar: 1.22, radius: 560, target: new THREE.Vector3(0, 78, 0) };
+  function placeCamera() {
+    const radius = orbit.radius * (state.real ? 1.41 : 1);
+    const s = Math.sin(orbit.polar);
+    camera.position.set(orbit.target.x + radius * s * Math.sin(orbit.azimuth), orbit.target.y + radius * Math.cos(orbit.polar), orbit.target.z + radius * s * Math.cos(orbit.azimuth));
+    camera.lookAt(orbit.target);
+  }
+  const pointers = new Map();
+  let pinch = 0;
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+  canvas.addEventListener("pointerdown", (event) => { canvas.setPointerCapture(event.pointerId); pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, button: event.button }); });
+  canvas.addEventListener("pointerup", (event) => { pointers.delete(event.pointerId); pinch = 0; });
+  canvas.addEventListener("pointercancel", (event) => { pointers.delete(event.pointerId); pinch = 0; });
+  canvas.addEventListener("pointermove", (event) => {
+    const last = pointers.get(event.pointerId);
+    if (!last) return;
+    const dx = event.clientX - last.x, dy = event.clientY - last.y;
+    last.x = event.clientX; last.y = event.clientY;
+    if (pointers.size === 2) {
+      const pts = Array.from(pointers.values());
+      const distance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinch) orbit.radius = Math.min(1600, Math.max(140, orbit.radius * pinch / distance));
+      pinch = distance;
+    } else if (last.button === 2 || event.shiftKey) {
+      const scale = orbit.radius / 900;
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+      orbit.target.addScaledVector(right, -dx * scale).addScaledVector(up, dy * scale);
+    } else {
+      orbit.azimuth -= dx * 0.008;
+      orbit.polar = Math.min(1.56, Math.max(0.12, orbit.polar - dy * 0.008));
+    }
+    placeCamera();
+  });
+  canvas.addEventListener("wheel", (event) => { event.preventDefault(); orbit.radius = Math.min(1600, Math.max(140, orbit.radius * Math.exp(event.deltaY * 0.001))); placeCamera(); }, { passive: false });
+
+  function resize() {
+    const box = canvas.parentElement.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    renderer.setSize(box.width, box.height, false);
+    camera.aspect = box.width / box.height;
+    camera.fov = (box.width < box.height ? 44 : 32) * (state.real ? 0.72 : 1);
+    if (typeof resizeTarget === "function") resizeTarget(box.width, box.height);
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas.parentElement);
+  resize(); placeCamera();
+
+  // ---------------------------------------------------------------- 操作
+  const play = $("play");
+  function syncPlay() { play.textContent = state.playing ? "停止" : "歩かせる"; }
+  play.addEventListener("click", () => { state.playing = !state.playing; syncPlay(); });
+  $("reverse").addEventListener("click", () => { state.direction *= -1; $("reverse").setAttribute("aria-pressed", String(state.direction < 0)); });
+  function syncRpm() { state.rpm = Number($("rpm").value); $("rpm-out").textContent = state.rpm + " rpm"; }
+  $("rpm").addEventListener("input", syncRpm);
+  $("crank").addEventListener("input", () => { state.playing = false; syncPlay(); state.frame = ((360 - Number($("crank").value)) % 360) / 360 * F; });
+  $("explode").addEventListener("input", () => { state.explode = Number($("explode").value) / 100; $("explode-out").textContent = $("explode").value + "%"; });
+  $("show-sc").addEventListener("change", (event) => items.forEach((item) => { if (item.isStackchan) item.mesh.visible = event.target.checked; }));
+  $("show-legs").addEventListener("change", (event) => { items.forEach((item) => { if (item.isLeg) item.mesh.visible = event.target.checked; }); syncPathVisibility(); });
+  $("show-sway").addEventListener("change", (event) => { state.sway = event.target.checked; });
+  $("show-path").addEventListener("change", () => syncPathVisibility());
+  syncPlay(); syncRpm(); $("explode-out").textContent = "0%";
+
+  // ---------------------------------------------------------------- 配色(3色)
+  const ROLES = ["chassis", "accent", "link"];
+  const PRESETS = [
+    ["設計どおり", DATA.roles.chassis, DATA.roles.accent, DATA.roles.link],
+    ["手持ちのフィラメント", "#cccccc", "#2a86ea", "#fcfcfc"],
+    ["導光バーのティール", "#2d3340", "#3fb3ba", "#d6d9dc"],
+    ["白い機体に赤", "#eceef0", "#e0362c", "#8d9196"],
+    ["黒い機体に黄", "#17191d", "#f2c230", "#6b7480"],
+    ["ミントとネイビー", "#1f2f4a", "#7fd6b5", "#f1f3f5"],
+    ["サンドとブラウン", "#5a4636", "#e39a4a", "#e8dfd2"],
+  ];
+  const colors = Object.assign({}, DATA.roles);
+  const STORE_KEY = "strider-colors";
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    if (saved) ROLES.forEach((role) => { if (/^#[0-9a-f]{6}$/i.test(saved[role] || "")) colors[role] = saved[role]; });
+  } catch (error) { /* 保存領域が使えない環境では既定の色で表示する */ }
+  // 部品の色を塗る。実写風では画面の色(sRGB)を光の計算用の値に直してから渡す
+  function paint(item) {
+    const part = DATA.parts[item.inst.part];
+    item.material.color.set(part.role ? colors[part.role] : part.color);
+    if (state.real) item.material.color.convertSRGBToLinear();
+    if (part.finish === "glow") { item.material.emissive.set(part.color); if (state.real) item.material.emissive.convertSRGBToLinear(); }
+    else if (state.real && part.printable) { item.material.emissive.copy(item.material.color).multiplyScalar(0.025); }
+    else { item.material.emissive.set(0x000000); }
+  }
+  function applyColors(save) {
+    items.forEach(paint);
+    document.querySelectorAll(".swatch[data-role]").forEach((node) => { if (colors[node.dataset.role]) node.style.background = colors[node.dataset.role]; });
+    ROLES.forEach((role) => { $("color-" + role).value = colors[role]; $("color-" + role + "-out").textContent = colors[role]; });
+    document.querySelectorAll(".preset").forEach((button) => {
+      const preset = PRESETS[Number(button.dataset.index)];
+      button.setAttribute("aria-pressed", String(ROLES.every((role, i) => preset[i + 1].toLowerCase() === colors[role].toLowerCase())));
+    });
+    if (save) { try { localStorage.setItem(STORE_KEY, JSON.stringify(colors)); } catch (error) { /* 保存できなくても表示は続ける */ } }
+  }
+  PRESETS.forEach((preset, index) => {
+    const stripes = el("i", {}, preset.slice(1).map((hex) => el("u", { style: "background:" + hex })));
+    const button = el("button", { class: "preset", "data-index": String(index), "aria-pressed": "false" }, [stripes, preset[0]]);
+    button.addEventListener("click", () => { ROLES.forEach((role, i) => { colors[role] = preset[i + 1]; }); applyColors(true); });
+    $("presets").appendChild(button);
+  });
+  ROLES.forEach((role) => $("color-" + role).addEventListener("input", (event) => { colors[role] = event.target.value; applyColors(true); }));
+  $("color-reset").addEventListener("click", () => { Object.assign(colors, DATA.roles); applyColors(true); });
+  $("color-copy").addEventListener("click", () => {
+    const text = "chassis: " + colors.chassis + "\naccent: " + colors.accent + "\nlink: " + colors.link;
+    const done = (message) => { $("color-note").textContent = message; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => done("コピーしました: " + text.replace(/\n/g, " / ")), () => done("コピーできませんでした。色コード: " + text.replace(/\n/g, " / ")));
+    } else { done("色コード: " + text.replace(/\n/g, " / ")); }
+  });
+  applyColors(false);
+
+  // ---------------------------------------------------------------- 見た目の切り替え(図面風 / 実写風)
+  // 実写風 = 机上のミニチュアを接写した絵。背景は置かず、素材(樹脂の艶・積層の筋・滑らかな曲面)とレンズのボケで見せる
+  function syncPathVisibility() { pathGroup.visible = $("show-path").checked && $("show-legs").checked && !state.real; }
+
+  // 撮影用の照明環境(天井の大きな面光源、右前の主光源、左後ろの縁取り)。樹脂のハイライトはここの映り込みで出る
+  function buildStudio() {
+    const studio = new THREE.Scene();
+    studio.add(new THREE.Mesh(new THREE.SphereGeometry(60, 32, 16), new THREE.MeshBasicMaterial({ color: 0x24272c, side: THREE.BackSide })));
+    const lamp = (x, y, z, w, h, power) => {
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(power, power, power * 0.97), side: THREE.DoubleSide }));
+      panel.position.set(x, y, z); panel.lookAt(0, 0, 0); studio.add(panel);
+    };
+    lamp(6, 44, 8, 40, 40, 2.6);
+    lamp(42, 18, 26, 14, 26, 7.0);
+    lamp(-40, 18, -30, 10, 34, 5.5);
+    lamp(-44, 6, 24, 16, 22, 0.9);
+    const generator = new THREE.PMREMGenerator(renderer);
+    const texture = generator.fromScene(studio, 0.035).texture;
+    generator.dispose();
+    return texture;
+  }
+
+  // 角は立てたまま曲面だけ滑らかにした形状(隣の面との角度が約 40° 未満なら法線をならす)
+  const smoothCache = {};
+  function smoothGeometry(key) {
+    if (smoothCache[key]) return smoothCache[key];
+    const flat = geometries[key].toNonIndexed();
+    const pos = flat.attributes.position.array, faces = pos.length / 9;
+    const faceNormal = new Float32Array(faces * 3), faceArea = new Float32Array(faces);
+    const keys = new Array(faces * 3), corners = new Map();
+    for (let f = 0; f < faces; f++) {
+      const o = f * 9;
+      const ax = pos[o + 3] - pos[o], ay = pos[o + 4] - pos[o + 1], az = pos[o + 5] - pos[o + 2];
+      const bx = pos[o + 6] - pos[o], by = pos[o + 7] - pos[o + 1], bz = pos[o + 8] - pos[o + 2];
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+      const length = Math.hypot(nx, ny, nz) || 1;
+      faceArea[f] = length; faceNormal[f * 3] = nx / length; faceNormal[f * 3 + 1] = ny / length; faceNormal[f * 3 + 2] = nz / length;
+      for (let c = 0; c < 3; c++) {
+        const p = o + c * 3;
+        const key3 = Math.round(pos[p] * 200) + "_" + Math.round(pos[p + 1] * 200) + "_" + Math.round(pos[p + 2] * 200);
+        keys[f * 3 + c] = key3;
+        const list = corners.get(key3);
+        if (list) list.push(f); else corners.set(key3, [f]);
+      }
+    }
+    const normals = new Float32Array(pos.length), CREASE = 0.76;
+    for (let f = 0; f < faces; f++) {
+      const fx = faceNormal[f * 3], fy = faceNormal[f * 3 + 1], fz = faceNormal[f * 3 + 2];
+      for (let c = 0; c < 3; c++) {
+        let nx = 0, ny = 0, nz = 0;
+        const list = corners.get(keys[f * 3 + c]);
+        for (let i = 0; i < list.length; i++) {
+          const g = list[i], gx = faceNormal[g * 3], gy = faceNormal[g * 3 + 1], gz = faceNormal[g * 3 + 2];
+          if (fx * gx + fy * gy + fz * gz > CREASE) { nx += gx * faceArea[g]; ny += gy * faceArea[g]; nz += gz * faceArea[g]; }
+        }
+        const length = Math.hypot(nx, ny, nz) || 1, p = f * 9 + c * 3;
+        normals[p] = nx / length; normals[p + 1] = ny / length; normals[p + 2] = nz / length;
+      }
+    }
+    flat.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+    smoothCache[key] = flat;
+    return flat;
+  }
+
+  // レンズのボケ: いったん画像と奥行きを別の面に描き、ピント位置から離れた画素ほど広くぼかして画面へ出す
+  const rim = new THREE.DirectionalLight(0xffffff, 0);
+  rim.position.set(-220, 170, -260);
+  scene.add(rim);
+  let target = null, targetScale = 1;
+  const postScene = new THREE.Scene(), postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const postMaterial = new THREE.ShaderMaterial({
+    uniforms: { tColor: { value: null }, tDepth: { value: null }, uNear: { value: camera.near }, uFar: { value: camera.far },
+      uFocus: { value: 500 }, uTexel: { value: new THREE.Vector2(1, 1) }, uMaxBlur: { value: 8 }, uStrength: { value: 2.4 } },
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: [
+      "precision highp float;",
+      "uniform sampler2D tColor; uniform sampler2D tDepth;",
+      "uniform float uNear; uniform float uFar; uniform float uFocus; uniform float uMaxBlur; uniform float uStrength;",
+      "uniform vec2 uTexel; varying vec2 vUv;",
+      "float distanceAt(vec2 uv) { float z = texture2D(tDepth, uv).x * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }",
+      "float blurAt(float d) { return clamp(abs(d - uFocus) / uFocus * uStrength, 0.0, 1.0); }",
+      "void main() {",
+      "  float own = blurAt(distanceAt(vUv));",
+      "  vec4 sum = texture2D(tColor, vUv); float total = 1.0;",
+      "  for (int i = 1; i <= 36; i++) {",
+      "    float fi = float(i); float r = sqrt(fi / 36.0);",
+      "    vec2 uv = vUv + vec2(cos(fi * 2.39996323), sin(fi * 2.39996323)) * r * own * uMaxBlur * uTexel;",
+      "    float other = blurAt(distanceAt(uv));",
+      "    float w = mix(0.04, 1.0, clamp(other / max(own, 0.001), 0.0, 1.0));",  // ピントの合った部分がボケた部分へにじむのを抑える
+      "    sum += texture2D(tColor, uv) * w; total += w;",
+      "  }",
+      "  gl_FragColor = sum / total;",
+      "}",
+    ].join("\n"),
+    depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+  });
+  postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+  function resizeTarget(width, height) {
+    if (!state.real) return;
+    targetScale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
+    const w = Math.max(2, Math.round(width * targetScale)), h = Math.max(2, Math.round(height * targetScale));
+    if (target && target.width === w && target.height === h) return;
+    if (target) { target.depthTexture.dispose(); target.dispose(); }
+    target = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat });
+    target.texture.encoding = THREE.sRGBEncoding;
+    target.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
+    postMaterial.uniforms.tColor.value = target.texture;
+    postMaterial.uniforms.tDepth.value = target.depthTexture;
+    postMaterial.uniforms.uTexel.value.set(1 / w, 1 / h);
+    postMaterial.uniforms.uMaxBlur.value = 7 * targetScale;
+  }
+  function draw() {
+    if (!state.real || !target) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
+    postMaterial.uniforms.uFocus.value = Math.max(50, camera.position.distanceTo(orbit.target) - 18);  // 顔の少し手前にピント
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(postScene, postCamera);
+  }
+
+  let studioMap = null;
+  function setLook(real, save) {
+    state.real = real;
+    if (real && !studioMap) studioMap = buildStudio();
+    renderer.toneMapping = real ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    renderer.toneMappingExposure = real ? 1.0 : 1.0;
+    scene.environment = real ? studioMap : null;
+    hemi.intensity = real ? 0.0 : 0.85;
+    sun.intensity = real ? 1.25 : 0.75;
+    sun.shadow.radius = real ? 7 : 1;
+    rim.intensity = real ? 0.7 : 0;
+    floor.material.opacity = real ? 0.42 : 0.22;
+    grid.visible = !real;
+    items.forEach((item) => {
+      paint(item);
+      const material = item.material, part = DATA.parts[item.inst.part], finish = part.finish;
+      item.mesh.geometry = real ? smoothGeometry(item.inst.part) : geometries[item.inst.part];
+      material.flatShading = !real;
+      material.metalness = real ? 0 : (finish === "glass" ? 0.35 : 0.05);
+      if (finish === "glass") {
+        material.roughness = real ? 0.05 : 0.12; material.clearcoat = real ? 1 : 0; material.clearcoatRoughness = 0.03; material.envMapIntensity = real ? 1.15 : 0;
+      } else if (part.printable) {  // 3D プリントの樹脂: 半艶 + 薄い艶の層 + 積層の筋
+        material.roughness = real ? 0.34 : 0.62; material.clearcoat = real ? 0.45 : 0; material.clearcoatRoughness = 0.22; material.envMapIntensity = real ? 0.42 : 0;
+      } else {  // スタックチャン本体: 射出成形の梨地
+        material.roughness = real ? 0.5 : 0.62; material.clearcoat = 0; material.envMapIntensity = real ? 0.36 : 0;
+      }
+      if (finish === "glow") material.emissiveIntensity = real ? 1.5 : 0.85;
+      material.userData.layerAmp.value = real && part.printable ? 0.3 : 0;
+      material.needsUpdate = true;
+    });
+    $("look-plain").setAttribute("aria-pressed", String(!real));
+    $("look-real").setAttribute("aria-pressed", String(real));
+    syncPathVisibility();
+    resize(); placeCamera();
+    if (save) { try { localStorage.setItem("strider-look", real ? "real" : "plain"); } catch (error) { /* 保存できなくても表示は続ける */ } }
+  }
+  $("look-plain").addEventListener("click", () => setLook(false, true));
+  $("look-real").addEventListener("click", () => setLook(true, true));
+  let startReal = location.hash === "#real";
+  if (!location.hash) { try { startReal = localStorage.getItem("strider-look") === "real"; } catch (error) { /* 既定の図面風で始める */ } }
+  setLook(startReal, false);
+
+  let previous = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.1, (now - previous) / 1000);
+    previous = now;
+    if (state.playing) {
+      state.frame += state.direction * state.rpm / 60 * F * dt;
+      while (state.frame >= F) { state.frame -= F; state.lap += 1; }
+      while (state.frame < 0) { state.frame += F; state.lap -= 1; }
+    }
+    pose();
+    draw();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>

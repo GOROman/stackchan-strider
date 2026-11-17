@@ -1,0 +1,12 @@
+# Python 3.10 で確認した版
+manifold3d==3.5.2
+trimesh==4.11.1
+numpy==2.2.6
+scipy==1.15.3
+networkx==3.4.2
+pillow==12.3.0
+matplotlib==3.10.8
+# 物理シミュレーション(walker/sim_mujoco.py, sim_sweep.py)だけに必要
+mujoco==3.9.0
+imageio==2.37.2
+imageio-ffmpeg==0.6.0

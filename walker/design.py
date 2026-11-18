@@ -74,6 +74,8 @@ L1 = L0 + CRANK_T + GAP  # リンク第1層の内面
 SHAFT_AF = 8.0  # 六角シャフト二面幅(呼び寸法。穴はこれ + SHAFT_BORE_CLEARANCE)
 SHAFT_BORE_CLEARANCE = 0.3  # 六角穴の広げ量(二面幅)
 SHAFT_UNDERSIZE = 0.2  # シャフト本体を呼び寸法より細くする量(二面幅)。穴との差は合計 0.5
+CRANK_SOCKET_FIT = 0.1  # クランクの六角穴とシャフトの二面幅の差。クランクはシャフトと一緒に回るので、手で押し込める軽い圧入にする(抜け止めは摩擦だけ)
+CRANK_SOCKET_LEAD = 0.3  # クランクの六角穴の口の面取り(差し込みの案内と、1 層目のつぶれの逃げ)
 SLEEVE_R = 6.0
 DECK_Z0, DECK_Z1 = 6.5, 9.5
 HUB_Z0 = 15.6  # ターンテーブル歯車のハブ(歯の内側の筒)の下端
@@ -507,7 +509,10 @@ def crank_part() -> Manifold:
     """クランク(ローカル: 軸 = X、内面 x=0、ピンは +Y 方向へ偏心)。六角の止まり穴でシャフトに差す。"""
     radius = LEG.m
     disc = hull2(circle(CRANK_R), circle(STUD_R + 3.0, radius, 0)).extrude(CRANK_T)
-    socket = hexagon(SHAFT_AF + SHAFT_BORE_CLEARANCE).extrude(3.0)
+    socket_af = SHAFT_AF - SHAFT_UNDERSIZE + CRANK_SOCKET_FIT
+    socket = hexagon(socket_af).extrude(3.0)
+    lead_af = socket_af + 2 * CRANK_SOCKET_LEAD
+    socket += hexagon(lead_af).extrude(CRANK_SOCKET_LEAD, scale_top=(socket_af / lead_af, socket_af / lead_af))
     pin = grooved_pin(CRANK_T, PIN_CLEAR).translate((radius, 0, 0))
     return apply(disc - socket + pin, AXIS_Z_TO_X)
 

@@ -576,12 +576,14 @@ ol.do li.current { color: var(--signal); font-weight: 700; }
     const lit = {};
     let leg = null;
     const windowOf = () => 1.6;
-    state.op = -1;
+    state.leg = null;
     if (legStep) {
       let current = -1;
       LEG.ops.forEach((op, index) => { if (p >= op[0]) current = index; });
-      items.forEach((item) => { if (item.leg && item.asm.step === S && item.asm.op === current) leg = item.leg; });
-      state.op = current;
+      // いまの操作の脚。脚に属さない操作(ピンのクリップ)の間は、直前に組んでいた脚のままにする
+      let found = -1;
+      items.forEach((item) => { if (item.leg && item.asm.step === S && item.asm.op <= current && item.asm.op > found) { found = item.asm.op; leg = item.leg; } });
+      state.leg = leg;
     } else {
       items.forEach((item) => {
         if (!item.marks.length || !(item.t > 0 && item.t < windowOf(item))) return;
@@ -623,13 +625,13 @@ ol.do li.current { color: var(--signal); font-weight: 700; }
     return { az: from.az + turn * k, pol: from.pol + (to.pol - from.pol) * k, r: from.r + (to.r - from.r) * k,
       at: [0, 1, 2].map((i) => from.at[i] + (to.at[i] - from.at[i]) * k) };
   }
-  // 「裏返す」のラベル: その三角板を付ける操作の間だけ、部品の中心に重ねる
+  // 「裏返す」のラベル: その脚を組んでいる間、裏返して付ける三角板の中心に重ねる
   const flipPoint = new THREE.Vector3();
   function placeFlipLabels() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     items.forEach((item) => {
       if (!item.flip) return;
-      const on = item.mesh.visible && item.asm.step === state.step && item.asm.op === state.op;
+      const on = item.mesh.visible && item.asm.step === state.step && item.leg === state.leg;
       item.flip.el.hidden = !on;
       if (!on) return;
       flipPoint.copy(item.flip.center).applyMatrix4(item.mesh.matrixWorld).project(camera);

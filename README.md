@@ -10,7 +10,7 @@ M5Stack 製品版スタックチャン(K151 / CoreS3)を、首振り(ヨー)サ�
 - 組立ガイド(スクロールすると組み立てが進みます): https://yeq6x.github.io/stackchan-strider/
 - 3D ビューアー: https://yeq6x.github.io/stackchan-strider/viewer.html
 - 印刷用データ: `print/stackchan_strider.3mf`(Bambu Studio のプロジェクト)、`print/stl/`
-- ファームウェア: `firmware/`(スマホのブラウザから操作)
+- ファームウェア: `firmware/`(Mac のネイティブアプリから BLE で操作)
 
 | | |
 |---|---|
@@ -78,8 +78,7 @@ STL を使う場合は `print/stl/` にあります。造形時の向きで出�
 
 ## ファームウェア
 
-`firmware/README.md` を見てください。画面はスタックチャンの顔で、家の Wi-Fi につないだスマホのブラウザから前進・後退を操作します。
-Wi-Fi の設定は、画面に出る QR をスマホで読んで行います。
+本体の画面にはスタックチャンの顔が表示されます。Mac のネイティブアプリを開くと、BLE で前進・後退を操作できます。起動方法は [ファームウェアの README](firmware/README.md) を参照してください。
 
 ## 設計を変える・検証する
 

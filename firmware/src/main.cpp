@@ -1,351 +1,207 @@
-// Stackchan Strider: M5Stack 製品版スタックチャン(K151)を、首振りサーボの連続回転で歩かせるファームウェア。
-//
-//  - 画面はスタックチャンの顔(m5stack-avatar)。歩行中に笑顔にするかは設定で選べる(初期状態は変えない)
-//  - はじめて起動すると設定用の Wi-Fi を出し、画面の QR をスマホで読んで家の Wi-Fi を設定する
-//  - 家の Wi-Fi につながると、画面に操作ページの QR を出す。スマホのブラウザから前進・後退・停止
-//  - 操作ページのボタンを押している間だけ歩く。押している間は 0.3 秒ごとに合図が来て、0.9 秒途切れたら自動で止まる
-//
-// 注意: この機体では土台が回り続けるので、首(ヨー)を「角度指定」で動かす命令(goHome / stop / moveX)は使わない。
-//       それらは原点の角度まで首を回そうとして、脚が勝手に動く。止めるときは出力 0 の連続回転(rotateX(0))にする。
+// Stackchan Strider for M5Stack K151 / CoreS3.
 #include <Arduino.h>
-#include <initializer_list>
 #include <Avatar.h>
-#include <DNSServer.h>
-#include <ESPmDNS.h>
+#include <BLEDevice.h>
 #include <M5StackChan.h>
 #include <Preferences.h>
-#include <WebServer.h>
-#include <WiFi.h>
-
-#include "pages.h"
 
 namespace {
 
-constexpr int SPEED_MIN = 10;  // 速さの下限 [%]
-constexpr int SPEED_MAX = 60;  // 速さの上限 [%]。シミュレーションでは全開だと跳ねて進みが悪い
-constexpr uint32_t COMMAND_TIMEOUT_MS = 900;  // スマホからの合図(0.3 秒ごと)がこの時間途切れたら止める
-constexpr uint32_t CONNECT_TIMEOUT_MS = 20000;  // 家の Wi-Fi への接続を待つ時間
-constexpr uint32_t QR_SHOW_MS = 15000;  // 操作ページの QR を出しておく時間
-constexpr uint32_t FORGET_HOLD_MS = 5000;  // 頭の上をこの時間さわり続けると「Wi-Fi の設定を消しますか」を出す
-constexpr uint32_t CONFIRM_SHOW_MS = 10000;  // 確認の画面を出しておく時間。過ぎたら何もせず顔に戻る
-constexpr int PITCH_MAX_DEG = 60;
-const IPAddress SETUP_IP(192, 168, 4, 1);
-const char* const MDNS_NAME = "strider";
+constexpr char SERVICE_UUID[] = "48a23901-7920-49ee-889b-93d7dd615b02";
+constexpr char COMMAND_UUID[] = "48a23902-7920-49ee-889b-93d7dd615b02";
+constexpr char STATE_UUID[] = "48a23903-7920-49ee-889b-93d7dd615b02";
+constexpr uint32_t COMMAND_TIMEOUT_MS = 900;
+constexpr uint32_t REACTION_MS = 650;
+constexpr uint32_t ANIMATION_INTERVAL_MS = 50;
+// StackChan-BSP reports yaw in tenths of a degree and clamps it to ±128°.
+constexpr float YAW_REPORT_LIMIT = 1280.0f;
+constexpr int PITCH_CENTER = 30;
+constexpr int PITCH_MAX = 60;
+constexpr int DRIVE_MIN = 10;
+constexpr int DRIVE_MAX = 100;
+constexpr uint32_t BRAKE_MS = 320;
+constexpr uint32_t BRAKE_STEP_MS = 20;
 
-enum class Mode { Setup, Ready };
+struct Command {
+    uint8_t direction;  // 0 stop, 1 forward, 2 reverse
+    uint8_t speed;
+    uint8_t pitch;
+    uint8_t flags;  // bit 0 invert, bit 1 animate
+};
+static_assert(sizeof(Command) == 4);
 
 Preferences prefs;
-WebServer server(80);
-DNSServer dns;
 m5avatar::Avatar avatar;
+BLECharacteristic* state;
+Command active{0, 35, PITCH_CENTER, 0};
+Command pending{};
+uint32_t pendingAt = 0;
+uint32_t lastCommandAt = 0;
+uint32_t reactionUntil = 0;
+uint32_t lastAnimationAt = 0;
+int lastPitchTarget = -1;
+int driveOutput = 0;
+int brakeFrom = 0;
+uint32_t brakeStartedAt = 0;
+bool hasCommand = false;
+bool connected = false;
+bool disconnected = false;
+portMUX_TYPE mailboxLock = portMUX_INITIALIZER_UNLOCKED;
 
-Mode mode = Mode::Setup;
-String setupSsid;  // 設定用 Wi-Fi の名前
-bool invertDirection = false;
-bool smileWhileWalking = false;  // 歩いている間は笑顔にするか(設定で切り替える。初期状態は変えない)
-int driveDirection = 0;  // +1 前進 / -1 後退 / 0 停止
-int driveSpeed = 35;  // [%]
-uint32_t lastCommandMs = 0;
-uint32_t restartAtMs = 0;  // 0 以外なら、この時刻に再起動する
-uint32_t qrUntilMs = 0;  // 0 以外なら、この時刻まで QR を表示している
-int qrSecondsShown = -1;  // QR の画面にいま出している残り秒数(-1 = まだ出していない)
-uint32_t confirmUntilMs = 0;  // 0 以外なら、この時刻まで「Wi-Fi の設定を消しますか」を表示している
-bool avatarRunning = false;
-
-// ---------------------------------------------------------------- 歩行
-void applyDrive() {
-    if (driveDirection == 0) {
-        M5StackChan.Motion.rotateX(0);
-        return;
-    }
-    const int sign = (invertDirection ? -1 : 1) * driveDirection;
-    M5StackChan.Motion.rotateX(sign * driveSpeed * 10);  // 速さ % → -1000〜1000
-}
-
-// 顔の表情。設定が ON のときだけ、歩いている間を笑顔にする
-void applyExpression() {
-    if (!avatarRunning) {
-        return;
-    }
-    const bool smile = smileWhileWalking && driveDirection != 0;
-    avatar.setExpression(smile ? m5avatar::Expression::Happy : m5avatar::Expression::Neutral);
-}
-
-void setDrive(int direction, int speed) {
-    driveDirection = constrain(direction, -1, 1);
-    driveSpeed = constrain(speed, SPEED_MIN, SPEED_MAX);
-    lastCommandMs = millis();
-    applyDrive();
-    applyExpression();
-}
-
-// ---------------------------------------------------------------- 画面
-// 顔の描画を止める。suspend() は描画タスクを画面への通信の途中で凍結しうるので使わず、
-// 描画ループが 1 コマ描き終えて自分で終わる stop() を使い、終わるまで少し待つ
-void stopAvatar() {
-    if (avatarRunning) {
-        avatar.stop();
-        avatarRunning = false;
-        delay(200);
+void setDriveOutput(int output) {
+    if (output != driveOutput) {
+        driveOutput = output;
+        M5StackChan.Motion.rotateX(output);
     }
 }
 
-void showFace() {
-    qrUntilMs = 0;
-    M5.Display.fillScreen(TFT_BLACK);
-    avatar.start();
-    avatarRunning = true;
-    applyExpression();
-}
-
-void drawCaption(const char* text, int x, int y) {
-    M5.Display.setFont(&fonts::lgfxJapanGothic_16);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-    M5.Display.setTextDatum(textdatum_t::top_center);
-    M5.Display.drawString(text, x, y);
-}
-
-// QR を左に大きく、右に「何をすればいいか」を文章で出す画面。lines は右側の文章(1 行ずつ)
-void showQrScreen(const char* title, const String& qr, std::initializer_list<const char*> lines, const char* footer) {
-    stopAvatar();
-    M5.Display.fillScreen(TFT_WHITE);
-    M5.Display.fillRect(0, 0, 320, 30, TFT_BLACK);
-    M5.Display.setFont(&fonts::lgfxJapanGothic_16);
-    M5.Display.setTextDatum(textdatum_t::middle_left);
-    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-    M5.Display.drawString(title, 10, 15);
-    M5.Display.qrcode(qr.c_str(), 8, 40, 164, 4);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-    M5.Display.setTextDatum(textdatum_t::top_left);
-    int y = 46;
-    for (const char* line : lines) {
-        M5.Display.drawString(line, 182, y);
-        y += 24;
-    }
-    M5.Display.setTextDatum(textdatum_t::bottom_center);
-    M5.Display.drawString(footer, 160, 236);
-}
-
-// 設定の 1 歩目: スマホを設定用 Wi-Fi につないでもらう
-void showSetupJoinScreen() {
-    showQrScreen("Wi-Fi の設定  1 / 2", "WIFI:T:nopass;S:" + setupSsid + ";;",
-                 {"スマホのカメラで", "左の QR を読み、", "出てきた Wi-Fi に", "つないでください"}, setupSsid.c_str());
-}
-
-// 設定の 2 歩目: スマホがつながったら、設定ページの開き方を案内する
-void showSetupPageScreen() {
-    const String url = "http://" + SETUP_IP.toString() + "/";
-    showQrScreen("Wi-Fi の設定  2 / 2", url,
-                 {"つながりました。", "設定のページが", "開かないときは", "左の QR を読んで", "ください"}, url.c_str());
-}
-
-// 操作ページの QR
-void showControlQr() {
-    const String url = "http://" + WiFi.localIP().toString() + "/";
-    showQrScreen("操作ページ", url, {"家の Wi-Fi に", "つないだスマホで", "左の QR を読むと", "操作できます"}, url.c_str());
-    qrUntilMs = millis() + QR_SHOW_MS;
-    qrSecondsShown = -1;
-}
-
-// 操作ページの QR の画面に、顔へ戻るまでの残り秒数を出す(右の文章の下)。秒が変わったときだけ描き直す
-void drawQrCountdown(uint32_t now) {
-    const int seconds = static_cast<int>((qrUntilMs - now + 999) / 1000);
-    if (seconds == qrSecondsShown) {
-        return;
-    }
-    qrSecondsShown = seconds;
-    char line[32];
-    snprintf(line, sizeof(line), "あと %d 秒で", seconds);
-    M5.Display.fillRect(180, 148, 140, 66, TFT_WHITE);
-    M5.Display.setFont(&fonts::lgfxJapanGothic_16);
-    M5.Display.setTextDatum(textdatum_t::top_left);
-    M5.Display.setTextColor(TFT_RED, TFT_WHITE);
-    M5.Display.drawString(line, 182, 150);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-    M5.Display.drawString("元の画面に", 182, 172);
-    M5.Display.drawString("戻ります", 182, 194);
-}
-
-void showMessage(const char* line1, const char* line2 = "") {
-    stopAvatar();
-    M5.Display.fillScreen(TFT_WHITE);
-    drawCaption(line1, 160, 96);
-    drawCaption(line2, 160, 124);
-}
-
-// 確認画面のボタンの位置(画面は 320×240)
-constexpr int CONFIRM_BUTTON_TOP = 150, CONFIRM_BUTTON_BOTTOM = 220;
-constexpr int CANCEL_LEFT = 16, CANCEL_RIGHT = 152, ERASE_LEFT = 168, ERASE_RIGHT = 304;
-
-// 頭を長押ししたときの確認。画面の「消す」をタッチしたときだけ Wi-Fi の設定を消す
-void showForgetConfirm() {
-    stopAvatar();
-    qrUntilMs = 0;
-    M5.Display.fillScreen(TFT_WHITE);
-    drawCaption("Wi-Fi の設定を消しますか?", 160, 36);
-    drawCaption("消すと、最初の設定画面に戻ります", 160, 70);
-    drawCaption("画面のボタンをタッチしてください", 160, 104);
-    const int height = CONFIRM_BUTTON_BOTTOM - CONFIRM_BUTTON_TOP;
-    M5.Display.drawRoundRect(CANCEL_LEFT, CONFIRM_BUTTON_TOP, CANCEL_RIGHT - CANCEL_LEFT, height, 10, TFT_BLACK);
-    M5.Display.fillRoundRect(ERASE_LEFT, CONFIRM_BUTTON_TOP, ERASE_RIGHT - ERASE_LEFT, height, 10, TFT_RED);
-    M5.Display.setFont(&fonts::lgfxJapanGothic_24);
-    M5.Display.setTextDatum(textdatum_t::middle_center);
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
-    M5.Display.drawString("やめる", (CANCEL_LEFT + CANCEL_RIGHT) / 2, (CONFIRM_BUTTON_TOP + CONFIRM_BUTTON_BOTTOM) / 2);
-    M5.Display.setTextColor(TFT_WHITE, TFT_RED);
-    M5.Display.drawString("消す", (ERASE_LEFT + ERASE_RIGHT) / 2, (CONFIRM_BUTTON_TOP + CONFIRM_BUTTON_BOTTOM) / 2);
-    confirmUntilMs = millis() + CONFIRM_SHOW_MS;
-}
-
-// ---------------------------------------------------------------- ページと API
-void sendJsonState() {
-    char json[160];
-    snprintf(json, sizeof(json), "{\"dir\":%d,\"speed\":%d,\"invert\":%d,\"smile\":%d,\"volt\":%.2f}", driveDirection,
-             driveSpeed, invertDirection ? 1 : 0, smileWhileWalking ? 1 : 0, M5StackChan.getBatteryVoltage());
-    server.sendHeader("Cache-Control", "no-store");
-    server.send(200, "application/json", json);
-}
-
-void handleDrive() {
-    setDrive(server.arg("dir").toInt(), server.arg("speed").toInt());
-    sendJsonState();
-}
-
-void handleStop() {
-    setDrive(0, driveSpeed);
-    sendJsonState();
-}
-
-void handlePing() {
-    lastCommandMs = millis();
-    sendJsonState();
-}
-
-void handleLook() {
-    const int degrees = constrain(server.arg("pitch").toInt(), 0, PITCH_MAX_DEG);
-    M5StackChan.Motion.movePitch(degrees * 10, 300);  // 角度の単位は 0.1°
-    sendJsonState();
-}
-
-void handleInvert() {
-    invertDirection = server.arg("on").toInt() != 0;
-    prefs.putBool("invert", invertDirection);
-    applyDrive();
-    sendJsonState();
-}
-
-void handleSmile() {
-    smileWhileWalking = server.arg("on").toInt() != 0;
-    prefs.putBool("smile", smileWhileWalking);
-    applyExpression();
-    sendJsonState();
-}
-
-void handleForget() {
-    setDrive(0, driveSpeed);
-    prefs.remove("ssid");
-    prefs.remove("pass");
-    server.send(200, "application/json", "{\"ok\":1}");
-    restartAtMs = millis() + 800;
-}
-
-void handleScan() {
-    const int count = WiFi.scanNetworks();
-    String json = "[";
-    for (int i = 0; i < count; i++) {
-        String name = WiFi.SSID(i);
-        if (name.isEmpty() || json.indexOf("\"" + name + "\"") >= 0) {
-            continue;  // 名前のないものと重複は出さない
+void applyDrive(uint32_t now) {
+    if (active.direction == 0) {
+        if (driveOutput && !brakeFrom) {
+            brakeFrom = driveOutput;
+            brakeStartedAt = now;
         }
-        name.replace("\\", "\\\\");
-        name.replace("\"", "\\\"");
-        if (json.length() > 1) {
-            json += ",";
-        }
-        json += "{\"ssid\":\"" + name + "\",\"lock\":" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "0" : "1") + "}";
-    }
-    json += "]";
-    WiFi.scanDelete();
-    server.sendHeader("Cache-Control", "no-store");
-    server.send(200, "application/json", json);
-}
-
-void handleSaveWifi() {
-    const String ssid = server.arg("ssid");
-    if (ssid.isEmpty()) {
-        server.send(400, "application/json", "{\"error\":\"ssid\"}");
         return;
     }
-    prefs.putString("ssid", ssid);
-    prefs.putString("pass", server.arg("pass"));
-    server.send(200, "application/json", "{\"ok\":1}");
-    restartAtMs = millis() + 1200;
+
+    brakeFrom = 0;
+    const int direction = active.direction == 1 ? 1 : -1;
+    const int sign = (active.flags & 1) ? 1 : -1;
+    setDriveOutput(direction * sign * active.speed * 10);
 }
 
-void startServer() {
-    if (mode == Mode::Ready) {
-        server.on("/", []() {
-            if (qrUntilMs) {
-                qrUntilMs = millis();  // 操作ページが開かれたら QR をしまって顔に戻す
-            }
-            server.send_P(200, "text/html; charset=utf-8", CONTROL_PAGE);
-        });
-        server.on("/api/drive", handleDrive);
-        server.on("/api/stop", handleStop);
-        server.on("/api/ping", handlePing);
-        server.on("/api/state", sendJsonState);
-        server.on("/api/look", handleLook);
-        server.on("/api/invert", handleInvert);
-        server.on("/api/smile", handleSmile);
-        server.on("/api/forget", handleForget);
-        server.onNotFound([]() { server.send(404, "text/plain", "not found"); });
-    } else {
-        server.on("/", []() { server.send_P(200, "text/html; charset=utf-8", SETUP_PAGE); });
-        server.on("/api/scan", handleScan);
-        server.on("/api/wifi", HTTP_POST, handleSaveWifi);
-        // スマホが「このWi-Fiはログインが必要か」を確かめに来る通信を、設定ページへ案内する
-        server.onNotFound([]() {
-            server.sendHeader("Location", "http://" + SETUP_IP.toString() + "/");
-            server.send(302, "text/plain", "");
-        });
+void updateBraking(uint32_t now) {
+    if (!brakeFrom) {
+        return;
     }
-    server.begin();
-}
-
-// ---------------------------------------------------------------- Wi-Fi
-void startSetupMode() {
-    mode = Mode::Setup;
-    const uint64_t mac = ESP.getEfuseMac();
-    char name[24];
-    snprintf(name, sizeof(name), "Strider-%04X", static_cast<unsigned>((mac >> 32) & 0xFFFF));
-    setupSsid = name;
-    WiFi.mode(WIFI_AP_STA);  // STA は周囲の Wi-Fi を探すために残す
-    WiFi.softAPConfig(SETUP_IP, SETUP_IP, IPAddress(255, 255, 255, 0));
-    WiFi.softAP(setupSsid.c_str());
-    dns.start(53, "*", SETUP_IP);
-    startServer();
-    showSetupJoinScreen();
-}
-
-bool connectHomeWifi(const String& ssid, const String& pass) {
-    showMessage("Wi-Fi につないでいます", ssid.c_str());
-    WiFi.mode(WIFI_STA);
-    WiFi.setHostname(MDNS_NAME);
-    WiFi.begin(ssid.c_str(), pass.c_str());
-    const uint32_t started = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - started < CONNECT_TIMEOUT_MS) {
-        delay(200);
+    const uint32_t elapsed = now - brakeStartedAt;
+    if (elapsed >= BRAKE_MS) {
+        brakeFrom = 0;
+        setDriveOutput(0);
+        return;
     }
-    return WiFi.status() == WL_CONNECTED;
+    const uint32_t step = elapsed / BRAKE_STEP_MS * BRAKE_STEP_MS;
+    const float remaining = 1.0f - static_cast<float>(step) / BRAKE_MS;
+    setDriveOutput(lroundf(brakeFrom * remaining * remaining));
 }
 
-void startReadyMode() {
-    mode = Mode::Ready;
-    MDNS.begin(MDNS_NAME);
-    MDNS.addService("http", "tcp", 80);
-    startServer();
-    showControlQr();
+void updateAnimation(uint32_t now) {
+    if (now - lastAnimationAt < ANIMATION_INTERVAL_MS) {
+        return;
+    }
+    lastAnimationAt = now;
+
+    using m5avatar::Expression;
+    Expression expression = Expression::Neutral;
+    float mouth = 0;
+    int target = active.pitch;
+    int pitchSpeed = 450;
+    if (active.direction && (active.flags & 2)) {
+        const float effort = (active.speed - DRIVE_MIN) / static_cast<float>(DRIVE_MAX - DRIVE_MIN);
+        const bool reversing = active.direction == 2;
+        const int yaw = M5StackChan.Motion.getCurrentYawAngle();
+        // Both ends yield the same pitch when the yaw reading wraps.
+        const float stride = cosf(PI * yaw / YAW_REPORT_LIMIT);
+        const bool surprised = static_cast<int32_t>(reactionUntil - now) > 0;
+        if (surprised) {
+            mouth = 0.95f;
+        } else if (active.speed >= 48) {
+            expression = stride > 0 ? Expression::Angry : Expression::Neutral;
+            mouth = 0.24f + 0.12f * stride;
+        } else if (reversing && stride < -0.45f) {
+            expression = Expression::Doubt;
+            mouth = 0.18f;
+        } else {
+            mouth = 0.10f + 0.08f * stride;
+        }
+        const float nodRange = 2.0f + 3.0f * effort;
+        const int lookAngle = active.pitch + (reversing ? 18 : -6);
+        const float base = constrain(static_cast<float>(lookAngle), nodRange, PITCH_MAX - nodRange);
+        target = lroundf(base + stride * nodRange);
+        pitchSpeed = reversing ? 850 : 650;
+    }
+    avatar.setExpression(expression);
+    avatar.setMouthOpenRatio(mouth);
+
+    target = constrain(target, 0, PITCH_MAX);
+    if (target != lastPitchTarget) {
+        M5StackChan.Motion.movePitch(target * 10, pitchSpeed);
+        lastPitchTarget = target;
+    }
 }
+
+void publishState() {
+    const uint16_t mv = constrain(lroundf(M5StackChan.getBatteryVoltage() * 1000), 0L, 65535L);
+    const uint8_t value[]{active.direction, active.speed, active.pitch, active.flags,
+                          static_cast<uint8_t>(mv), static_cast<uint8_t>(mv >> 8), DRIVE_MAX};
+    state->setValue(value, sizeof(value));
+}
+
+void applyCommand(const Command& command, uint32_t now) {
+    if (command.direction != active.direction) {
+        lastAnimationAt = now - ANIMATION_INTERVAL_MS;
+    }
+    if (command.direction && command.speed >= 48 &&
+        (active.direction != command.direction || active.speed < 48 || command.speed >= active.speed + 12)) {
+        reactionUntil = now + REACTION_MS;
+    }
+    if (!command.direction) {
+        reactionUntil = now;
+    }
+    const uint8_t changed = command.flags ^ active.flags;
+    if (changed & 1) {
+        prefs.putBool("invert", command.flags & 1);
+    }
+    if (changed & 2) {
+        prefs.putBool("animate", command.flags & 2);
+    }
+    const bool driveChanged = command.direction != active.direction || command.speed != active.speed || (changed & 1);
+    active = command;
+    if (driveChanged) {
+        applyDrive(now);
+    }
+}
+
+class ServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer*) override {
+        portENTER_CRITICAL(&mailboxLock);
+        connected = true;
+        portEXIT_CRITICAL(&mailboxLock);
+    }
+
+    void onDisconnect(BLEServer*) override {
+        portENTER_CRITICAL(&mailboxLock);
+        connected = false;
+        disconnected = true;
+        hasCommand = false;
+        portEXIT_CRITICAL(&mailboxLock);
+    }
+};
+
+class CommandCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* characteristic) override {
+        if (characteristic->getLength() != sizeof(Command)) {
+            return;
+        }
+        const uint8_t* data = characteristic->getData();
+        const Command command{data[0], data[1], data[2], data[3]};
+        if (command.direction > 2 || command.speed < DRIVE_MIN || command.speed > DRIVE_MAX ||
+            command.pitch > PITCH_MAX || command.flags > 3) {
+            return;
+        }
+        const uint32_t now = millis();
+        portENTER_CRITICAL(&mailboxLock);
+        if (connected && !disconnected) {
+            pending = command;
+            pendingAt = now;
+            hasCommand = true;
+        }
+        portEXIT_CRITICAL(&mailboxLock);
+    }
+};
+
+ServerCallbacks serverCallbacks;
+CommandCallbacks commandCallbacks;
 
 }  // namespace
 
@@ -353,85 +209,77 @@ void setup() {
     M5StackChan.begin();
     M5.Display.setBrightness(120);
     Serial.begin(115200);
-    Serial.printf("[strider] board=%d rotation=%d width=%d height=%d\n", static_cast<int>(M5.getBoard()),
-                  M5.Display.getRotation(), M5.Display.width(), M5.Display.height());
-    M5StackChan.Motion.rotateX(0);  // 首(ヨー)を連続回転モードにして止めておく
+    // PWM writes set the output but do not enable servo torque. BSP idle
+    // release can also turn torque off while yaw is in continuous mode.
+    M5StackChan.Motion.setAutoTorqueReleaseEnabled(false);
+    M5StackChan.Motion.rotateX(0);
+    M5StackChan.Motion.setTorqueEnabled(true);
+    M5StackChan.Motion.movePitch(PITCH_CENTER * 10, 300);
+    lastPitchTarget = PITCH_CENTER;
     prefs.begin("strider", false);
-    invertDirection = prefs.getBool("invert", false);
-    smileWhileWalking = prefs.getBool("smile", false);
-    const String ssid = prefs.getString("ssid", "");
-    if (!ssid.isEmpty() && connectHomeWifi(ssid, prefs.getString("pass", ""))) {
-        startReadyMode();
-    } else {
-        if (!ssid.isEmpty()) {
-            showMessage("Wi-Fi につながりません", "設定をやり直します");
-            delay(2500);
-        }
-        startSetupMode();
-    }
+    active.flags = (prefs.getBool("invert", false) ? 1 : 0) |
+                   (prefs.getBool("animate", true) ? 2 : 0);
+    avatar.start();
+
+    char name[24];
+    snprintf(name, sizeof(name), "Strider-%04X", static_cast<unsigned>((ESP.getEfuseMac() >> 32) & 0xFFFF));
+    BLEDevice::init(name);
+    BLEServer* server = BLEDevice::createServer();
+    server->setCallbacks(&serverCallbacks);
+    server->advertiseOnDisconnect(true);
+    BLEService* service = server->createService(SERVICE_UUID);
+    service->createCharacteristic(COMMAND_UUID, BLECharacteristic::PROPERTY_WRITE)->setCallbacks(&commandCallbacks);
+    state = service->createCharacteristic(STATE_UUID, BLECharacteristic::PROPERTY_READ);
+    publishState();
+    service->start();
+
+    BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    BLEAdvertisementData advertisement;
+    advertisement.setFlags(0x06);
+    advertisement.setCompleteServices(BLEUUID(SERVICE_UUID));
+    advertising->setAdvertisementData(advertisement);
+    BLEAdvertisementData scanResponse;
+    scanResponse.setName(name);
+    advertising->setScanResponseData(scanResponse);
+    advertising->setScanResponse(true);
+    advertising->start();
+    Serial.printf("[strider] BLE ready: %s\n", name);
 }
 
 void loop() {
     M5StackChan.update();
-    server.handleClient();
-    const uint32_t now = millis();
 
-    if (mode == Mode::Setup) {
-        dns.processNextRequest();
-        // スマホが設定用 Wi-Fi につながったら 2 歩目の画面へ、切れたら 1 歩目へ戻す
-        static bool phoneJoined = false;
-        const bool joined = WiFi.softAPgetStationNum() > 0;
-        if (joined != phoneJoined && !restartAtMs) {
-            phoneJoined = joined;
-            if (joined) {
-                showSetupPageScreen();
-            } else {
-                showSetupJoinScreen();
-            }
-        }
-    } else {
-        // スマホからの合図が途切れたら止める(電波が切れた、ページを閉じた、など)
-        if (driveDirection != 0 && now - lastCommandMs > COMMAND_TIMEOUT_MS) {
-            setDrive(0, driveSpeed);
-        }
-        if (qrUntilMs && now >= qrUntilMs) {
-            showFace();
-        } else if (qrUntilMs) {
-            drawQrCountdown(now);
-        }
-        // 頭の上をさわって離すと操作ページの QR を出す。さわり続けると「Wi-Fi の設定を消しますか」を出す
-        static bool holdHandled = false;  // 長押しで確認を出したあと、指を離すまで次の操作を受け付けない
-        if (confirmUntilMs) {
-            const auto touch = M5.Touch.getDetail();
-            const bool inButtonRow = touch.y >= CONFIRM_BUTTON_TOP && touch.y <= CONFIRM_BUTTON_BOTTOM;
-            if (touch.wasPressed() && inButtonRow && touch.x >= ERASE_LEFT && touch.x <= ERASE_RIGHT && !restartAtMs) {
-                confirmUntilMs = 0;
-                prefs.remove("ssid");
-                prefs.remove("pass");
-                showMessage("Wi-Fi の設定を消しました", "再起動します");
-                restartAtMs = now + 1500;
-            } else if ((touch.wasPressed() && inButtonRow && touch.x >= CANCEL_LEFT && touch.x <= CANCEL_RIGHT) || now >= confirmUntilMs) {
-                confirmUntilMs = 0;
-                showFace();
-            }
-        } else if (!restartAtMs) {
-            if (M5StackChan.TouchSensor.pressedFor(FORGET_HOLD_MS) && !holdHandled) {
-                holdHandled = true;
-                setDrive(0, driveSpeed);
-                showForgetConfirm();
-            } else if (M5StackChan.TouchSensor.wasReleased() && !holdHandled && !qrUntilMs) {
-                showControlQr();
-            }
-        }
-        if (holdHandled && !M5StackChan.TouchSensor.isPressed()) {
-            holdHandled = false;
-        }
+    portENTER_CRITICAL(&mailboxLock);
+    const bool connectionEnded = disconnected;
+    const bool received = hasCommand;
+    const Command command = pending;
+    const uint32_t commandAt = pendingAt;
+    disconnected = false;
+    hasCommand = false;
+    portEXIT_CRITICAL(&mailboxLock);
+
+    const uint32_t now = millis();
+    if (received && now - commandAt < COMMAND_TIMEOUT_MS) {
+        lastCommandAt = commandAt;
+        applyCommand(command, now);
+        publishState();
     }
 
-    if (restartAtMs && now >= restartAtMs) {
-        M5StackChan.Motion.rotateX(0);
-        delay(100);
-        ESP.restart();
+    if ((active.direction || driveOutput) && (connectionEnded || now - lastCommandAt >= COMMAND_TIMEOUT_MS)) {
+        active.direction = 0;
+        brakeFrom = 0;
+        reactionUntil = now;
+        lastAnimationAt = now - ANIMATION_INTERVAL_MS;
+        setDriveOutput(0);
+        publishState();
+    }
+    updateBraking(now);
+    updateAnimation(now);
+
+    static uint32_t lastStateAt = 0;
+    if (now - lastStateAt >= 5000) {
+        lastStateAt = now;
+        publishState();
     }
     delay(5);
 }

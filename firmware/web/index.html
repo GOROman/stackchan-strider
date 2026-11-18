@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stackchan Strider</title>
+<style>
+:root {
+  color-scheme: dark;
+  font: 16px/1.5 system-ui, sans-serif;
+  --cyan: #30e3f2;
+  --yellow: #ffe45c;
+  --black: #000;
+  accent-color: var(--cyan);
+}
+html, body { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { margin: 0; background: var(--black); color: var(--cyan); }
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, 17rem);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: .65rem;
+  max-width: 58rem;
+  height: 100dvh;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: .65rem;
+  touch-action: none;
+}
+header, #settings { grid-column: 1; min-width: 0; overflow-wrap: anywhere; }
+#settings { align-self: start; }
+header, fieldset { padding: 1rem; border: 2px solid var(--cyan); border-radius: 1rem; background: var(--black); }
+h1 { font-size: clamp(1.65rem, 6vw, 2.35rem); margin: 0 0 .4rem; }
+p { margin: .5rem 0; }
+fieldset { margin: 1rem 0 0; min-width: 0; }
+legend { padding: 0 .4rem; font-weight: 700; }
+.row { display: flex; gap: .55rem; align-items: center; }
+.row > * { flex: 1; }
+button { font: inherit; font-weight: 650; padding: .65rem .35rem; min-height: 2.75rem; border: 1px solid currentColor; border-radius: .55rem; background: transparent; color: inherit; cursor: pointer; }
+button:disabled { background: var(--black); color: var(--cyan); border-style: dashed; cursor: default; }
+#connect, #center { background: var(--cyan); color: var(--black); border-color: var(--cyan); }
+#stop { background: var(--yellow); color: var(--black); border-color: var(--yellow); }
+.motion:disabled button { background: var(--black); color: var(--cyan); }
+:focus-visible { outline: 3px solid var(--yellow); outline-offset: 4px; }
+.motion { grid-column: 2; grid-row: 1 / -1; min-height: 0; margin: 0; box-sizing: border-box; }
+.drive { display: grid; height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr) auto auto auto; gap: .5rem; }
+.throttle { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 4rem; align-items: stretch; gap: .65rem; padding: .35rem; border-radius: 1rem; touch-action: none; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: ns-resize; }
+fieldset:disabled .throttle input { cursor: default; }
+.throttle input { appearance: none; writing-mode: vertical-lr; direction: rtl; box-sizing: border-box; width: 100%; height: 100%; min-height: 0; margin: 0; border: 2px solid var(--cyan); border-radius: 1.4rem; background: linear-gradient(to bottom, var(--cyan) 0 49.5%, var(--black) 49.5% 50.5%, var(--yellow) 50.5% 100%); touch-action: none; cursor: ns-resize; }
+.throttle input::-webkit-slider-thumb { appearance: none; width: clamp(2rem, 5vw, 6rem); height: 2.25rem; border: 3px solid var(--yellow); border-radius: .65rem; background: linear-gradient(var(--cyan), var(--cyan)) center / 1.2rem 4px no-repeat, var(--black); box-shadow: 0 0 0 3px var(--black); }
+.marks { display: flex; flex-direction: column; justify-content: space-between; padding: .4rem 0; touch-action: none; }
+.marks span:nth-child(n+2), .drive output { color: var(--yellow); }
+.drive output { text-align: center; font-weight: 700; }
+.drive p { margin: 0; font-size: .85rem; }
+#touch-cursor {
+  position: absolute;
+  box-sizing: border-box;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 3px solid var(--yellow);
+  border-radius: 50%;
+  background: #0009;
+  box-shadow: 0 0 0 2px var(--black);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+@media (max-width: 600px), (max-height: 550px) {
+  main { grid-template-columns: minmax(0, 1fr) minmax(7.5rem, 42%); gap: .4rem; padding: .4rem; }
+  header, fieldset { padding: .45rem; }
+  h1 { font-size: clamp(1.1rem, 5vw, 1.6rem); }
+  .drive { gap: .25rem; }
+  .throttle { grid-template-columns: minmax(0, 1fr) auto; gap: .25rem; padding: .15rem; }
+  .marks, .drive p, .drive button { font-size: .78rem; }
+  .drive .row { display: grid; gap: .25rem; }
+  .drive .row button { min-height: 2rem; padding: .2rem .1rem; }
+}
+output { font-variant-numeric: tabular-nums; }
+.slider { margin: .8rem 0 .2rem; }
+.slider label { display: flex; justify-content: space-between; gap: 1rem; margin: 0; }
+.slider input { display: block; width: 100%; height: 2.75rem; margin: 0; cursor: pointer; touch-action: none; }
+label { display: block; margin: .4rem 0; }
+</style>
+<main>
+  <header>
+    <h1>Stackchan Strider</h1>
+    <p id="status" role="status">未接続</p>
+    <p id="battery" hidden></p>
+    <button id="connect" type="button">Bluetooth で接続</button>
+  </header>
+  <fieldset id="motion" class="motion" disabled>
+    <legend>歩行</legend>
+    <div class="drive">
+      <div class="throttle" id="throttle-surface">
+        <input id="throttle" type="range" min="-51" max="51" step="1" value="0" aria-label="前進・後退" aria-valuetext="停止" aria-describedby="throttle-help">
+        <div class="marks" aria-hidden="true"><span>前進</span><span>停止</span><span>後退</span></div>
+        <span id="touch-cursor" aria-hidden="true" hidden></span>
+      </div>
+      <output id="throttle-value" for="throttle">停止</output>
+      <p id="throttle-help">指でなぞるか、押したままドラッグ。離すと停止。</p>
+      <div class="row"><button id="stop" type="button">停止</button><button id="center" type="button">センタリング</button></div>
+    </div>
+  </fieldset>
+  <fieldset id="settings" disabled>
+    <legend>顔と動き</legend>
+    <div class="slider">
+      <label for="pitch">顔の上下角度 <output id="pitch-value" for="pitch">30°</output></label>
+      <input id="pitch" type="range" min="0" max="60" step="1" value="30">
+    </div>
+    <label><input type="checkbox" id="invert"> 前進と後退を入れ替える</label>
+    <label><input type="checkbox" id="animate"> 歩行に合わせて表情と顔を動かす</label>
+  </fieldset>
+</main>
+<script src="control.js"></script>
+</html>

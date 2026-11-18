@@ -120,7 +120,7 @@ def retention() -> dict:
     stacks = [("クランクのピン", 4)] + [(f"{joint} の突起", layers) for joint, (_o, _a, layers) in d.STUD_JOINTS.items()]
     for label, layers in stacks:
         # 根元のすきま + 層の間 + 端 + 溝の中でクリップが動ける量
-        play = d.GAP + (layers - 1) * d.GAP + d.GAP + (d.GROOVE_W - d.CLIP_T)
+        play = d.GAP + (layers - 1) * d.GAP + d.END_GAP + (d.GROOVE_W - d.CLIP_T)
         rows.append(dict(joint=label, layers=layers, axial_play_mm=play))
     return dict(ok=overlap >= 1.0 and groove_fit, clip_overlap_mm=overlap, radial_fit_mm=d.FIT, joints=rows,
                 max_axial_play_mm=max(row["axial_play_mm"] for row in rows))

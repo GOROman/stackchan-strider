@@ -24,8 +24,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SEG = 72
 
 # ---------------------------------------------------------------- 寸法パラメータ
-FIT = 0.1  # 回転する穴と軸の半径すきま(モーターで回すので、ガタが出ない最小限にする)
-GAP = 0.1  # 重ねた部品どうしの面のすきま(層と層の間、端の遊び)
+FIT = 0.1  # C クリップの穴と溝の底の半径すきま
+HOLE_FIT = 0.2  # 回転する穴と軸の半径すきま(リンク・三角板の穴と突起、側板の軸受け穴とスリーブ)
+GAP = 0.15  # 重ねた部品どうしの面のすきま(根元と、層と層の間)
+END_GAP = 0.0  # 重ねた最後の部品と C クリップの間。溝の中でクリップが動ける分(CLIP_PLAY)があるので、ここでは取らない
+CLIP_PLAY = 0.1  # クリップ溝の幅とクリップの厚みの差
 LAYER_T = 3.0  # リンク厚
 LAYER_PITCH = LAYER_T + GAP  # リンク層のピッチ
 
@@ -52,7 +55,7 @@ STUD_R = 2.5
 CLIP_T = 1.0  # C クリップの厚み
 CLIP_R_OUT = 4.6
 GROOVE_DEPTH = 0.8  # クリップ溝の深さ(半径)
-GROOVE_W = CLIP_T + GAP  # クリップ溝の幅(平らな部分)
+GROOVE_W = CLIP_T + CLIP_PLAY  # クリップ溝の幅(平らな部分)
 PIN_TIP = 1.2  # 溝の先の頭の長さ
 
 # 傘歯車(1:1 マイタ、軸角 90°、ピッチ円錐半角 45°)
@@ -70,12 +73,12 @@ L0 = PLATE_OUT + 0.2  # クランク円板の内面
 L1 = L0 + CRANK_T + GAP  # リンク第1層の内面
 SHAFT_AF = 8.0  # 六角シャフト二面幅(呼び寸法。穴はこれ + SHAFT_BORE_CLEARANCE)
 SHAFT_BORE_CLEARANCE = 0.3  # 六角穴の広げ量(二面幅)
-SHAFT_UNDERSIZE = 0.1  # シャフト本体を呼び寸法より細くする量(二面幅)。穴との差は合計 0.4
+SHAFT_UNDERSIZE = 0.2  # シャフト本体を呼び寸法より細くする量(二面幅)。穴との差は合計 0.5
 SLEEVE_R = 6.0
 DECK_Z0, DECK_Z1 = 6.5, 9.5
 HUB_Z0 = 15.6  # ターンテーブル歯車のハブ(歯の内側の筒)の下端
 BOSS_R = 10.5  # デッキのボス(ターンテーブルの軸受け)の外半径
-SPINDLE_FIT = 0.1  # ターンテーブルの軸と穴のすきま(片側)。大きいと円板が傾く
+SPINDLE_FIT = 0.2  # ターンテーブルの軸と穴のすきま(片側)。大きいと円板が傾く
 BOSS_GAP = 0.4  # ボスの外側と、ターンテーブル側の逃がし溝のすきま(当てない面)
 SPINDLE_R = 7.8
 TABLE_R = 41.0
@@ -211,7 +214,7 @@ def _dogbone(length: float) -> CrossSection:
 
 
 def _hole(cx: float, cy: float) -> CrossSection:
-    return circle(STUD_R + FIT, cx, cy)
+    return circle(STUD_R + HOLE_FIT, cx, cy)
 
 
 def grooved_pin(base_h: float, clear: float) -> Manifold:
@@ -245,8 +248,8 @@ def stud(cx: float, cy: float, base_h: float, clear: float) -> Manifold:
 
 
 def stud_clear(layers: int) -> float:
-    """突起の根元(持ち主の上面)から、layers 枚を重ねた上の面 + GAP までの長さ。"""
-    return layers * LAYER_PITCH + GAP
+    """突起の根元(持ち主の上面)から、layers 枚を重ねた上の面 + END_GAP までの長さ。"""
+    return layers * LAYER_PITCH + END_GAP
 
 
 def clip_seat(clear: float) -> float:
@@ -496,7 +499,7 @@ def sleeve_part() -> Manifold:
     return _sleeve(GEAR_BACK, L0)
 
 
-PIN_CLEAR = GAP + 4 * LAYER_PITCH  # クランクの面から、リンク 4 枚を重ねた上の面 + GAP まで
+PIN_CLEAR = 4 * LAYER_PITCH + END_GAP  # クランクの面から、リンク 4 枚を重ねた上の面 + END_GAP まで
 
 
 @lru_cache(maxsize=None)
@@ -549,8 +552,8 @@ COLLAR_LUG_T = 4.0
 
 
 def plate_stud_clear(first_layer: int) -> float:
-    """側板の外面から、B の突起のクリップ溝までの長さ(リンク3と上の三角板を重ねた上の面 + GAP)。"""
-    return L1 + (first_layer + 2) * LAYER_PITCH - PLATE_OUT
+    """側板の外面から、B の突起のクリップ溝までの長さ(リンク3と上の三角板を重ねた上の面 + END_GAP)。"""
+    return L1 + (first_layer + 2) * LAYER_PITCH - GAP + END_GAP - PLATE_OUT
 
 
 @lru_cache(maxsize=None)
@@ -563,7 +566,7 @@ def side_plate_part() -> Manifold:
         section += horn
         tenon = _snap_tenon(TENON_W, COLLAR_LUG_T, 11.0).translate((sign * HORN_Y, COLLAR_Z0))
         section += tenon
-    section -= circle(SLEEVE_R + FIT)
+    section -= circle(SLEEVE_R + HOLE_FIT)
     for sign in (1, -1):
         section -= rect(sign * DECK_TENON_Y - TENON_W / 2 - 0.2, sign * DECK_TENON_Y + TENON_W / 2 + 0.2, DECK_Z0 - 0.15, DECK_Z1 + 0.15)
     plate = plate_yz(section, PLATE_IN, PLATE_OUT)
